@@ -100,17 +100,11 @@ class ChatController extends Controller
         $id = $this->request->getRequiredBodyParam('id');
         $conversation = $this->getConversation((int)$id);
 
-        $uiMessages = array_filter(
-            $conversation->messages,
-            fn(Message $m) => in_array($m->role, [MessageRole::User, MessageRole::Assistant], true),
-        );
-        $messages = array_values(array_map(fn(Message $m) => $m->toArray(), $uiMessages));
-
         return $this->asJson([
             'id' => $conversation->id,
             'title' => $conversation->title,
             'contextId' => $conversation->contextId,
-            'messages' => $messages,
+            'messages' => $this->buildUiMessages($conversation->messages),
         ]);
     }
 
@@ -268,15 +262,9 @@ class ChatController extends Controller
             return $this->asJson(['id' => null, 'messages' => []]);
         }
 
-        $uiMessages = array_filter(
-            $conversation->messages,
-            fn(Message $m) => in_array($m->role, [MessageRole::User, MessageRole::Assistant], true),
-        );
-        $messages = array_values(array_map(fn(Message $m) => $m->toArray(), $uiMessages));
-
         return $this->asJson([
             'id' => $conversation->id,
-            'messages' => $messages,
+            'messages' => $this->buildUiMessages($conversation->messages),
         ]);
     }
 
@@ -323,8 +311,7 @@ class ChatController extends Controller
 
         $conversationId = $this->persistConversation(
             $conversationId ? (int)$conversationId : null,
-            $message,
-            $result['text'],
+            $result['newMessages'],
             $persistContextType,
             $persistContextId,
             $result['debug'],
@@ -334,8 +321,8 @@ class ChatController extends Controller
 
         $plugin->auditService->linkToConversation($conversationId);
 
-        // Remove debug data from the client response
-        unset($result['debug']);
+        // Remove internal data from the client response
+        unset($result['debug'], $result['newMessages']);
         $result['conversationId'] = $conversationId;
 
         return $this->asJson($result);
@@ -409,8 +396,7 @@ class ChatController extends Controller
 
         $conversationId = $this->persistConversation(
             $conversationId ? (int)$conversationId : null,
-            $message,
-            $result['text'],
+            $result['newMessages'],
             $persistContextType,
             $persistContextId,
             $result['debug'],
@@ -480,12 +466,12 @@ class ChatController extends Controller
     }
 
     /**
+     * @param array<int, array<string, mixed>> $newMessages
      * @param array<string, mixed>|null $debug
      */
     private function persistConversation(
         ?int $conversationId,
-        string $userMessage,
-        ?string $assistantResponse,
+        array $newMessages,
         string $contextType,
         ?int $contextId,
         ?array $debug = null,
@@ -504,25 +490,26 @@ class ChatController extends Controller
             $conversation = $plugin->conversationService->getById($conversationId);
         }
 
+        // Use the first user message for the title when creating a new conversation
+        $title = 'New conversation';
+        foreach ($newMessages as $msg) {
+            if (($msg['role'] ?? '') === MessageRole::User->value && is_string($msg['content'] ?? null)) {
+                $title = $this->generateTitle($msg['content']);
+                break;
+            }
+        }
+
         if ($conversation === null) {
             $conversation = new Conversation(
                 userId: $user->id,
-                title: $this->generateTitle($userMessage),
+                title: $title,
                 contextType: $contextType,
                 contextId: $contextId,
             );
         }
 
-        $conversation->addMessage(new Message(
-            role: MessageRole::User,
-            content: $userMessage,
-        ));
-
-        if ($assistantResponse !== null) {
-            $conversation->addMessage(new Message(
-                role: MessageRole::Assistant,
-                content: $assistantResponse,
-            ));
+        foreach ($newMessages as $msg) {
+            $conversation->addMessage(Message::fromArray($msg));
         }
 
         if ($debug !== null) {
@@ -538,6 +525,60 @@ class ChatController extends Controller
         }
 
         return $conversation->id;
+    }
+
+    /**
+     * Builds UI-ready messages from the full conversation history.
+     * Collects tool call metadata from Tool-role messages and attaches them
+     * to the next assistant message with content.
+     *
+     * @param Message[] $messages
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildUiMessages(array $messages): array
+    {
+        $uiMessages = [];
+        /** @var array<int, array{name: string|null, success: bool, entryId: int|null, entryTitle: string|null, cpEditUrl: string|null}> $pendingToolCalls */
+        $pendingToolCalls = [];
+
+        foreach ($messages as $msg) {
+            if ($msg->role === MessageRole::Tool) {
+                $content = is_array($msg->content) ? $msg->content : [];
+                $pendingToolCalls[] = [
+                    'name' => $msg->toolName,
+                    'success' => $msg->isError !== true,
+                    'entryId' => isset($content['entryId']) ? (int)$content['entryId'] : null,
+                    'entryTitle' => $content['entryTitle'] ?? null,
+                    'cpEditUrl' => $content['cpEditUrl'] ?? null,
+                ];
+
+                continue;
+            }
+
+            // Skip intermediate assistant messages (tool calls only, no content)
+            if ($msg->role === MessageRole::Assistant && $msg->content === null) {
+                continue;
+            }
+
+            if ($msg->role === MessageRole::User) {
+                $uiMessages[] = $msg->toArray();
+
+                continue;
+            }
+
+            if ($msg->role === MessageRole::Assistant) {
+                $data = $msg->toArray();
+
+                if ($pendingToolCalls !== []) {
+                    $data['toolCalls'] = $pendingToolCalls;
+                    $pendingToolCalls = [];
+                }
+
+                $uiMessages[] = $data;
+            }
+        }
+
+        return $uiMessages;
     }
 
     private function generateTitle(string $userMessage): string

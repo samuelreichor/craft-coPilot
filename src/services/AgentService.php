@@ -47,7 +47,7 @@ class AgentService extends Component
      *
      * @param Message[] $conversationHistory
      * @param array<int, array<string, mixed>> $attachments
-     * @return array{text: string|null, toolCalls: array<int, array<string, mixed>>|null, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
+     * @return array{text: string|null, toolCalls: array<int, array<string, mixed>>|null, newMessages: array<int, array<string, mixed>>, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
      */
     public function handleMessage(
         string $userMessage,
@@ -75,7 +75,8 @@ class AgentService extends Component
         // Enrich user message with resolved attachment context
         $userMessage = $this->enrichMessageWithAttachments($userMessage, $attachments);
 
-        // Build messages array
+        // Build messages array — historyCount marks the boundary between old and new messages
+        $historyCount = count($conversationHistory);
         $messages = $this->buildMessagesArray($conversationHistory, $userMessage);
 
         // Get tool definitions
@@ -104,9 +105,16 @@ class AgentService extends Component
             $totalOutputTokens += $response->outputTokens;
 
             if ($response->type === 'error') {
+                $errorText = 'Error: ' . $response->error;
+                $messages[] = [
+                    'role' => MessageRole::Assistant->value,
+                    'content' => $errorText,
+                ];
+
                 return [
-                    'text' => 'Error: ' . $response->error,
+                    'text' => $errorText,
                     'toolCalls' => $executedToolCalls !== [] ? $executedToolCalls : null,
+                    'newMessages' => array_slice($messages, $historyCount),
                     'inputTokens' => $totalInputTokens,
                     'outputTokens' => $totalOutputTokens,
                     'debug' => $this->buildDebugPayload($systemPrompt, $model, $settings, $messages, $iteration),
@@ -120,11 +128,17 @@ class AgentService extends Component
                     $text = $this->buildToolCallSummary($executedToolCalls);
                 }
 
+                $messages[] = [
+                    'role' => MessageRole::Assistant->value,
+                    'content' => $text,
+                ];
+
                 Logger::info("handleMessage complete: {$iteration} iterations, {$totalInputTokens} input / {$totalOutputTokens} output tokens");
 
                 return [
                     'text' => $text,
                     'toolCalls' => $executedToolCalls !== [] ? $executedToolCalls : null,
+                    'newMessages' => array_slice($messages, $historyCount),
                     'inputTokens' => $totalInputTokens,
                     'outputTokens' => $totalOutputTokens,
                     'debug' => $this->buildDebugPayload($systemPrompt, $model, $settings, $messages, $iteration),
@@ -156,7 +170,7 @@ class AgentService extends Component
                     // Add a tool result message
                     $messages[] = [
                         'role' => MessageRole::Tool->value,
-                        'content' => $result,
+                        'content' => $this->truncateToolResult($result),
                         'toolCallId' => $toolCall['id'],
                         'toolName' => $toolCall['name'],
                         'isError' => isset($result['error']),
@@ -165,9 +179,16 @@ class AgentService extends Component
             }
         }
 
+        $maxIterText = 'The AI reached the maximum number of tool call iterations. Please try a simpler request.';
+        $messages[] = [
+            'role' => MessageRole::Assistant->value,
+            'content' => $maxIterText,
+        ];
+
         return [
-            'text' => 'The AI reached the maximum number of tool call iterations. Please try a simpler request.',
+            'text' => $maxIterText,
             'toolCalls' => $executedToolCalls !== [] ? $executedToolCalls : null,
+            'newMessages' => array_slice($messages, $historyCount),
             'inputTokens' => $totalInputTokens,
             'outputTokens' => $totalOutputTokens,
             'debug' => $this->buildDebugPayload($systemPrompt, $model, $settings, $messages, $iteration),
@@ -180,7 +201,7 @@ class AgentService extends Component
      * @param Message[] $conversationHistory
      * @param callable(string, array<string, mixed>): void $emit Emits SSE events
      * @param array<int, array<string, mixed>> $attachments
-     * @return array{text: string|null, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
+     * @return array{text: string|null, newMessages: array<int, array<string, mixed>>, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
      */
     public function handleMessageStream(
         string $userMessage,
@@ -208,6 +229,7 @@ class AgentService extends Component
         // Enrich user message with resolved attachment context
         $userMessage = $this->enrichMessageWithAttachments($userMessage, $attachments);
 
+        $historyCount = count($conversationHistory);
         $messages = $this->buildMessagesArray($conversationHistory, $userMessage);
         $toolDefs = $this->getToolDefinitions();
         $settings = $plugin->getSettings();
@@ -361,8 +383,18 @@ class AgentService extends Component
             Logger::info("handleMessageStream complete: {$iteration} iterations, {$totalInputTokens} input / {$totalOutputTokens} output tokens");
         }
 
+        // Append final assistant message for persistence
+        $finalText = $fullText ?: null;
+        if ($finalText !== null) {
+            $messages[] = [
+                'role' => MessageRole::Assistant->value,
+                'content' => $finalText,
+            ];
+        }
+
         return [
-            'text' => $fullText ?: null,
+            'text' => $finalText,
+            'newMessages' => array_slice($messages, $historyCount),
             'inputTokens' => $totalInputTokens,
             'outputTokens' => $totalOutputTokens,
             'debug' => $this->buildDebugPayload($systemPrompt, $model, $settings, $messages, $iteration),

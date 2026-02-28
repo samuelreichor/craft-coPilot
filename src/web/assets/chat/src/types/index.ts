@@ -114,5 +114,6 @@ export interface ConversationDetail {
     content: string;
     toolCallId?: string | null;
     toolName?: string | null;
+    toolCalls?: ToolCall[] | null;
   }>;
 }

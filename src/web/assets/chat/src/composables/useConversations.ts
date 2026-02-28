@@ -3,6 +3,7 @@ import { apiPost } from './useCraftApi';
 import type {
   ConversationSummary,
   ConversationDetail,
+  ToolCall,
   UIMessage,
 } from '../types';
 import { parseAttachmentsFromContent } from '../utils/attachments';
@@ -39,7 +40,7 @@ export function useConversations(
         return {
           role: 'assistant' as const,
           content: raw,
-          toolCalls: null,
+          toolCalls: m.toolCalls ?? null,
           inputTokens: 0,
           outputTokens: 0,
         };
@@ -51,7 +52,11 @@ export function useConversations(
   ): Promise<{ conversationId: number | null; messages: UIMessage[] }> {
     const data = await apiPost<{
       id: number | null;
-      messages: Array<{ role: string; content: string }>;
+      messages: Array<{
+        role: string;
+        content: string;
+        toolCalls?: ToolCall[] | null;
+      }>;
     }>('co-pilot/chat/load-entry-conversation', { contextId });
 
     const messages: UIMessage[] = (data.messages || [])
@@ -60,7 +65,7 @@ export function useConversations(
         role: m.role as 'user' | 'assistant',
         content:
           typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-        toolCalls: null,
+        toolCalls: m.role === 'assistant' ? (m.toolCalls ?? null) : null,
         inputTokens: 0,
         outputTokens: 0,
       }));
