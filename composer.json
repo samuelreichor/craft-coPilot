@@ -42,9 +42,7 @@
     "check-cs": "ecs check --ansi",
     "fix-cs": "ecs check --ansi --fix",
     "phpstan": "phpstan --memory-limit=1G",
-    "test": "phpunit",
-    "eval": "npx promptfoo@latest eval -c evals/promptfooconfig.yaml",
-    "eval:view": "npx promptfoo@latest view"
+    "test": "phpunit"
   },
   "config": {
     "sort-packages": true,
