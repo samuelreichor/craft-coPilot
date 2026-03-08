@@ -16,7 +16,7 @@ class UpdateEntryTool implements ToolInterface
 
     public function getDescription(): string
     {
-        return 'Updates one or more fields of an existing entry in a single save (one revision). For Matrix fields: by default new blocks are appended. To replace all blocks use {"_replace": true, "blocks": [...]}. To clear all blocks use []. To update a single Matrix block field, pass the block\'s _blockId as entryId.';
+        return 'Updates one or more fields of an existing entry in a single save (one revision). Can also change entry status: set "enabled" (true/false), "postDate" (ISO 8601), or "expiryDate" (ISO 8601 or null) inside the fields object. For Matrix fields: by default new blocks are appended. To replace all blocks use {"_replace": true, "blocks": [...]}. To clear all blocks use []. To update a single Matrix block field, pass the block\'s _blockId as entryId.';
     }
 
     public function getParameters(): array
@@ -34,7 +34,7 @@ class UpdateEntryTool implements ToolInterface
                 ],
                 'fields' => [
                     'type' => 'object',
-                    'description' => 'An object mapping field handles to their new values. Example: {"title": "New Title", "excerpt": "Summary text", "tags": [10, 11]}. Supports all field types (see Field Value Formats).',
+                    'description' => 'An object mapping field handles to their new values. Native attributes: "title", "slug", "enabled" (boolean), "postDate" (ISO 8601 string), "expiryDate" (ISO 8601 string or null). Example: {"title": "New Title", "enabled": false}. Supports all field types (see Field Value Formats).',
                 ],
             ],
             'required' => ['entryId', 'fields'],
@@ -55,10 +55,10 @@ class UpdateEntryTool implements ToolInterface
         } else {
             $fields = $arguments['fields'];
 
-            // Models may send native fields (title, slug) at top level alongside a "fields" object.
+            // Models may send native fields at top level alongside a "fields" object.
             // Merge them in so they aren't silently dropped.
-            foreach (['title', 'slug'] as $native) {
-                if (isset($arguments[$native]) && !isset($fields[$native])) {
+            foreach (['title', 'slug', 'enabled', 'postDate', 'expiryDate'] as $native) {
+                if (array_key_exists($native, $arguments) && !array_key_exists($native, $fields)) {
                     $fields[$native] = $arguments[$native];
                 }
             }
@@ -107,13 +107,20 @@ class UpdateEntryTool implements ToolInterface
 
         $diff = [];
         $skippedFields = [];
-        $nativeFields = ['title', 'slug'];
+        $nativeFields = ['title', 'slug', 'enabled', 'postDate', 'expiryDate'];
 
         foreach ($fields as $fieldHandle => $value) {
             $oldValue = $this->getFieldValue($entry, $fieldHandle);
 
             if (in_array($fieldHandle, $nativeFields, true)) {
-                $entry->{$fieldHandle} = $value;
+                if ($fieldHandle === 'enabled') {
+                    $entry->enabled = (bool) $value;
+                    $value = (bool) $value;
+                } elseif ($fieldHandle === 'postDate' || $fieldHandle === 'expiryDate') {
+                    $entry->{$fieldHandle} = $value !== null ? new \DateTime($value) : null;
+                } else {
+                    $entry->{$fieldHandle} = $value;
+                }
             } else {
                 $value = CoPilot::getInstance()->fieldNormalizer->normalize($fieldHandle, $value, $entry);
 
@@ -284,7 +291,13 @@ class UpdateEntryTool implements ToolInterface
     {
         foreach ($fields as $fieldHandle => $value) {
             if (in_array($fieldHandle, $nativeFields, true)) {
-                $target->{$fieldHandle} = $value;
+                if ($fieldHandle === 'enabled') {
+                    $target->enabled = (bool) $value;
+                } elseif ($fieldHandle === 'postDate' || $fieldHandle === 'expiryDate') {
+                    $target->{$fieldHandle} = $value !== null ? new \DateTime($value) : null;
+                } else {
+                    $target->{$fieldHandle} = $value;
+                }
             } else {
                 $value = CoPilot::getInstance()->fieldNormalizer->normalize($fieldHandle, $value, $target);
 
@@ -413,6 +426,18 @@ class UpdateEntryTool implements ToolInterface
 
         if ($fieldHandle === 'slug') {
             return $entry->slug;
+        }
+
+        if ($fieldHandle === 'enabled') {
+            return $entry->enabled;
+        }
+
+        if ($fieldHandle === 'postDate') {
+            return $entry->postDate?->format('c');
+        }
+
+        if ($fieldHandle === 'expiryDate') {
+            return $entry->expiryDate?->format('c');
         }
 
         try {
