@@ -21,7 +21,7 @@ class OpenAIProvider implements ProviderInterface
         ?string $model = null,
     ): AIResponse {
         $settings = CoPilot::getInstance()->getSettings();
-        $apiKey = App::env($settings->openaiApiKeyEnvVar);
+        $apiKey = App::parseEnv($settings->openaiApiKeyEnvVar);
 
         if (!$apiKey) {
             return AIResponse::error('OpenAI API key not configured. Set the environment variable ' . $settings->openaiApiKeyEnvVar);
@@ -52,7 +52,7 @@ class OpenAIProvider implements ProviderInterface
         callable $onChunk,
     ): void {
         $settings = CoPilot::getInstance()->getSettings();
-        $apiKey = App::env($settings->openaiApiKeyEnvVar);
+        $apiKey = App::parseEnv($settings->openaiApiKeyEnvVar);
 
         if (!$apiKey) {
             $onChunk(new StreamChunk('error', error: 'OpenAI API key not configured.'));

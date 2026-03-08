@@ -3,6 +3,7 @@
 namespace samuelreichor\coPilot\services;
 
 use craft\base\Component;
+use craft\helpers\App;
 use samuelreichor\coPilot\CoPilot;
 use samuelreichor\coPilot\events\RegisterProvidersEvent;
 use samuelreichor\coPilot\providers\AnthropicProvider;
@@ -20,18 +21,44 @@ class ProviderService extends Component
     /** @var ProviderInterface[]|null */
     private ?array $providers = null;
 
-    public function getActiveProvider(): ProviderInterface
+    public function getActiveProvider(?string $handle = null): ProviderInterface
     {
         $settings = CoPilot::getInstance()->getSettings();
         $providers = $this->getProviders();
+        $providerHandle = $handle ?? $settings->defaultProvider;
 
-        return $providers[$settings->activeProvider]
-            ?? throw new \RuntimeException("Provider '{$settings->activeProvider}' not found.");
+        return $providers[$providerHandle]
+            ?? throw new \RuntimeException("Provider '{$providerHandle}' not found.");
     }
 
     public function getProvider(string $handle): ?ProviderInterface
     {
         return $this->getProviders()[$handle] ?? null;
+    }
+
+    /**
+     * Returns providers that have an API key configured.
+     *
+     * @return array<string, ProviderInterface>
+     */
+    public function getConfiguredProviders(): array
+    {
+        $settings = CoPilot::getInstance()->getSettings();
+        $envVarMap = [
+            'openai' => $settings->openaiApiKeyEnvVar,
+            'anthropic' => $settings->anthropicApiKeyEnvVar,
+            'gemini' => $settings->geminiApiKeyEnvVar,
+        ];
+
+        $configured = [];
+        foreach ($this->getProviders() as $handle => $provider) {
+            $envVar = $envVarMap[$handle] ?? null;
+            if ($envVar && App::parseEnv($envVar)) {
+                $configured[$handle] = $provider;
+            }
+        }
+
+        return $configured;
     }
 
     /**

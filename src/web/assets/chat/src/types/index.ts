@@ -98,11 +98,19 @@ export interface SendResponse {
   conversationId: number | null;
 }
 
+export interface ProviderInfo {
+  handle: string;
+  name: string;
+  models: string[];
+  defaultModel: string | null;
+}
+
 export interface ModelsResponse {
   provider: string;
   providerName: string;
   models: string[];
   currentModel: string | null;
+  providers: ProviderInfo[];
 }
 
 export interface ConversationDetail {

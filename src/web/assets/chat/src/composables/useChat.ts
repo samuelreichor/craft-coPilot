@@ -75,7 +75,7 @@ export function useChat(options: UseChatOptions) {
     finalizeStream();
   }
 
-  async function sendMessage(text: string, model?: string, executionMode?: string) {
+  async function sendMessage(text: string, model?: string, executionMode?: string, provider?: string) {
     if (isLoading.value) return;
 
     // Build full message with attachment prefix
@@ -119,7 +119,7 @@ export function useChat(options: UseChatOptions) {
     isLoading.value = true;
 
     // Try streaming first, fall back to legacy
-    sendStreaming(fullMessage, sendContextId, model ?? options.model, attachmentPayloads, executionMode);
+    sendStreaming(fullMessage, sendContextId, model ?? options.model, attachmentPayloads, executionMode, provider);
   }
 
   function sendStreaming(
@@ -128,6 +128,7 @@ export function useChat(options: UseChatOptions) {
     model?: string,
     sendAttachments?: AttachmentPayload[],
     executionMode?: string,
+    provider?: string,
   ) {
     isStreaming.value = true;
     streamingText.value = '';
@@ -145,6 +146,7 @@ export function useChat(options: UseChatOptions) {
         attachments: sendAttachments?.length ? sendAttachments : undefined,
         siteHandle: options.siteHandle || undefined,
         executionMode: executionMode || undefined,
+        provider: provider || undefined,
       },
       {
         onEvent(event) {
@@ -192,7 +194,7 @@ export function useChat(options: UseChatOptions) {
           streamingText.value = '';
           streamingThinking.value = '';
           liveToolCalls.value = [];
-          sendLegacy(message, sendContextId, model, sendAttachments, executionMode);
+          sendLegacy(message, sendContextId, model, sendAttachments, executionMode, provider);
           console.warn('SSE failed, falling back to legacy:', error.message);
         },
         onComplete() {
@@ -250,6 +252,7 @@ export function useChat(options: UseChatOptions) {
     model?: string,
     sendAttachments?: AttachmentPayload[],
     executionMode?: string,
+    provider?: string,
   ) {
     try {
       const data = await apiPost<SendResponse>('co-pilot/chat/send', {
@@ -261,6 +264,7 @@ export function useChat(options: UseChatOptions) {
         attachments: sendAttachments?.length ? sendAttachments : undefined,
         siteHandle: options.siteHandle || undefined,
         executionMode: executionMode || undefined,
+        provider: provider || undefined,
       });
 
       messages.value.push({

@@ -1,0 +1,71 @@
+{% import '_includes/forms.twig' as forms %}
+
+    <h3>Section Access</h3>
+    <p class="light">Configure which sections the AI can access. This works like GraphQL schema permissions.</p>
+
+    {% set sections = craft.app.entries.allSections %}
+
+    {% if sections|length %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>Section</th>
+                    <th class="thin centeralign">Blocked</th>
+                    <th class="thin centeralign">Read Only</th>
+                    <th class="thin centeralign">Read + Write</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for section in sections %}
+                    {% set currentAccess = settings.sectionAccess[section.uid] ?? 'readWrite' %}
+                    <tr>
+                        <td>
+                            <strong>{{ section.name }}</strong>
+                            <span class="light"> &ndash; {{ section.handle }}</span>
+                        </td>
+                        <td class="thin centeralign">
+                            <input type="radio"
+                                   name="sectionAccess[{{ section.uid }}]"
+                                   value="blocked"
+                                   {{ currentAccess == 'blocked' ? 'checked' }}>
+                        </td>
+                        <td class="thin centeralign">
+                            <input type="radio"
+                                   name="sectionAccess[{{ section.uid }}]"
+                                   value="readOnly"
+                                   {{ currentAccess == 'readOnly' ? 'checked' }}>
+                        </td>
+                        <td class="thin centeralign">
+                            <input type="radio"
+                                   name="sectionAccess[{{ section.uid }}]"
+                                   value="readWrite"
+                                   {{ currentAccess == 'readWrite' ? 'checked' }}>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="light">No sections found.</p>
+    {% endif %}
+
+    <hr>
+
+    <h3>Plugin Data Blocklist</h3>
+    <p class="light">Plugins that contain sensitive user data are blocked by default. Unblock at your own risk.</p>
+
+    {% set pluginOptions = [
+        { label: 'Formie (form submissions)', value: 'formie' },
+        { label: 'Freeform (form submissions)', value: 'freeform' },
+        { label: 'Campaign (email lists)', value: 'campaign' },
+    ] %}
+
+    {% for option in pluginOptions %}
+        {{ forms.checkboxField({
+            label: option.label,
+            id: 'blockedPlugin-' ~ option.value,
+            name: 'blockedPlugins[]',
+            value: option.value,
+            checked: option.value in settings.blockedPlugins,
+        }) }}
+    {% endfor %}

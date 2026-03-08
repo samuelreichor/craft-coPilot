@@ -3,246 +3,348 @@
 
 {% import '_includes/forms.twig' as forms %}
 
-<h2>Provider Settings</h2>
+<style>
+    .co-pilot-tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid var(--gray-200);
+        margin-bottom: 24px;
+    }
+    .co-pilot-tabs button {
+        padding: 10px 20px;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--gray-500);
+        cursor: pointer;
+        transition: color 0.15s, border-color 0.15s;
+    }
+    .co-pilot-tabs button:hover {
+        color: var(--text-color);
+    }
+    .co-pilot-tabs button.active {
+        color: var(--text-color);
+        border-bottom-color: var(--blue-500);
+    }
+    .co-pilot-tab-content {
+        display: none;
+    }
+    .co-pilot-tab-content.active {
+        display: block;
+    }
+</style>
 
-{{ forms.selectField({
-    label: 'Active Provider',
-    instructions: 'Select the AI provider to use.',
-    id: 'activeProvider',
-    name: 'activeProvider',
-    value: settings.activeProvider,
-    options: [
-        { label: 'OpenAI', value: 'openai' },
-        { label: 'Anthropic', value: 'anthropic' },
-        { label: 'Google Gemini', value: 'gemini' },
-    ],
-    errors: settings.getErrors('activeProvider'),
-}) }}
+<div class="co-pilot-tabs">
+    <button type="button" class="active" data-tab="providers">Providers</button>
+    <button type="button" data-tab="permissions">Permissions</button>
+    <button type="button" data-tab="advanced">Advanced</button>
+</div>
 
-<hr>
+{# ── Tab: Providers ──────────────────────────────────────────────── #}
 
-<h3>OpenAI</h3>
+<div class="co-pilot-tab-content active" data-tab-content="providers">
 
-{{ forms.textField({
-    label: 'API Key Environment Variable',
-    instructions: 'The environment variable name containing your OpenAI API key. Define it in your .env file.',
-    id: 'openaiApiKeyEnvVar',
-    name: 'openaiApiKeyEnvVar',
-    value: settings.openaiApiKeyEnvVar,
-    placeholder: 'OPENAI_API_KEY',
-}) }}
-
-{{ forms.selectField({
-    label: 'Default Model',
-    instructions: 'The default model for new chats. Users can switch models in the chat interface.',
-    id: 'openaiModel',
-    name: 'openaiModel',
-    value: settings.openaiModel,
-    options: modelOptions.openai ?? [],
-}) }}
-
-<hr>
-
-<h3>Anthropic</h3>
-
-{{ forms.textField({
-    label: 'API Key Environment Variable',
-    instructions: 'The environment variable name containing your Anthropic API key. Define it in your .env file.',
-    id: 'anthropicApiKeyEnvVar',
-    name: 'anthropicApiKeyEnvVar',
-    value: settings.anthropicApiKeyEnvVar,
-    placeholder: 'ANTHROPIC_API_KEY',
-}) }}
-
-{{ forms.selectField({
-    label: 'Default Model',
-    instructions: 'The default model for new chats. Users can switch models in the chat interface.',
-    id: 'anthropicModel',
-    name: 'anthropicModel',
-    value: settings.anthropicModel,
-    options: modelOptions.anthropic ?? [],
-}) }}
-
-<hr>
-
-<h3>Google Gemini</h3>
-
-{{ forms.textField({
-    label: 'API Key Environment Variable',
-    instructions: 'The environment variable name containing your Gemini API key. Define it in your .env file.',
-    id: 'geminiApiKeyEnvVar',
-    name: 'geminiApiKeyEnvVar',
-    value: settings.geminiApiKeyEnvVar,
-    placeholder: 'GEMINI_API_KEY',
-}) }}
-
-{{ forms.selectField({
-    label: 'Default Model',
-    instructions: 'The default model for new chats. Users can switch models in the chat interface.',
-    id: 'geminiModel',
-    name: 'geminiModel',
-    value: settings.geminiModel,
-    options: modelOptions.gemini ?? [],
-}) }}
-
-
-<hr>
-
-<h2>Data Protection</h2>
-
-<h3>Section Access</h3>
-<p class="light">Configure which sections the AI can access. This works like GraphQL schema permissions.</p>
-
-{% set sections = craft.app.entries.allSections %}
-
-{% if sections|length %}
-    <table class="data fullwidth">
-        <thead>
-            <tr>
-                <th>Section</th>
-                <th class="thin centeralign">Blocked</th>
-                <th class="thin centeralign">Read Only</th>
-                <th class="thin centeralign">Read + Write</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for section in sections %}
-                {% set currentAccess = settings.sectionAccess[section.uid] ?? 'readWrite' %}
-                <tr>
-                    <td>
-                        <strong>{{ section.name }}</strong>
-                        <span class="light"> &ndash; {{ section.handle }}</span>
-                    </td>
-                    <td class="thin centeralign">
-                        <input type="radio"
-                               name="sectionAccess[{{ section.uid }}]"
-                               value="blocked"
-                               {{ currentAccess == 'blocked' ? 'checked' }}>
-                    </td>
-                    <td class="thin centeralign">
-                        <input type="radio"
-                               name="sectionAccess[{{ section.uid }}]"
-                               value="readOnly"
-                               {{ currentAccess == 'readOnly' ? 'checked' }}>
-                    </td>
-                    <td class="thin centeralign">
-                        <input type="radio"
-                               name="sectionAccess[{{ section.uid }}]"
-                               value="readWrite"
-                               {{ currentAccess == 'readWrite' ? 'checked' }}>
-                    </td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-{% else %}
-    <p class="light">No sections found.</p>
-{% endif %}
-
-<br>
-
-<h3>Plugin Data Blocklist</h3>
-<p class="light">Plugins that contain sensitive user data are blocked by default. Unblock at your own risk.</p>
-
-{% set pluginOptions = [
-    { label: 'Formie (form submissions)', value: 'formie' },
-    { label: 'Freeform (form submissions)', value: 'freeform' },
-    { label: 'Campaign (email lists)', value: 'campaign' },
-] %}
-
-{% for option in pluginOptions %}
-    {{ forms.checkboxField({
-        label: option.label,
-        id: 'blockedPlugin-' ~ option.value,
-        name: 'blockedPlugins[]',
-        value: option.value,
-        checked: option.value in settings.blockedPlugins,
+    {{ forms.selectField({
+        label: 'Active Provider',
+        instructions: 'Select the AI provider to use.',
+        id: 'defaultProvider',
+        name: 'defaultProvider',
+        value: settings.defaultProvider,
+        options: [
+            { label: 'OpenAI', value: 'openai' },
+            { label: 'Anthropic', value: 'anthropic' },
+            { label: 'Google Gemini', value: 'gemini' },
+        ],
+        errors: settings.getErrors('defaultProvider'),
     }) }}
-{% endfor %}
 
-<hr>
+    <hr>
 
-<h2>Web Search</h2>
+    <h3>OpenAI</h3>
 
-{{ forms.lightswitchField({
-    label: 'Enable Web Search',
-    instructions: "Allow the AI to search the web. Uses Anthropic's built-in web search (Brave Search). Additional costs apply. Only available for Anthropic.",
-    id: 'webSearchEnabled',
-    name: 'webSearchEnabled',
-    on: settings.webSearchEnabled,
-}) }}
+    <div class="flex" style="gap: 24px;">
+        <div style="flex: 3;">
+            {{ forms.autosuggestField({
+                label: 'API Key Environment Variable',
+                instructions: 'The environment variable name containing your OpenAI API key.',
+                id: 'openaiApiKeyEnvVar',
+                name: 'openaiApiKeyEnvVar',
+                value: settings.openaiApiKeyEnvVar,
+                suggestEnvVars: true,
+                placeholder: 'OPENAI_API_KEY',
+                errors: settings.getErrors('openaiApiKeyEnvVar'),
+            }) }}
+        </div>
+        <div style="flex: 1;">
+            {{ forms.selectField({
+                label: 'Default Model',
+                instructions: 'The default model for new chats.',
+                id: 'openaiModel',
+                name: 'openaiModel',
+                value: settings.openaiModel,
+                options: modelOptions.openai ?? [],
+                errors: settings.getErrors('openaiModel'),
+            }) }}
+        </div>
+    </div>
 
-<hr>
+    <hr>
 
-<h2>Advanced</h2>
+    <h3>Anthropic</h3>
 
-{{ forms.textField({
-    label: 'Max Agent Iterations',
-    instructions: 'Maximum number of tool call iterations per request.',
-    id: 'maxAgentIterations',
-    name: 'maxAgentIterations',
-    value: settings.maxAgentIterations,
-    type: 'number',
-    min: 1,
-    max: 50,
-}) }}
+    <div class="flex" style="gap: 24px;">
+        <div style="flex: 3;">
+            {{ forms.autosuggestField({
+                label: 'API Key Environment Variable',
+                instructions: 'The environment variable name containing your Anthropic API key.',
+                id: 'anthropicApiKeyEnvVar',
+                name: 'anthropicApiKeyEnvVar',
+                value: settings.anthropicApiKeyEnvVar,
+                suggestEnvVars: true,
+                placeholder: 'ANTHROPIC_API_KEY',
+                errors: settings.getErrors('anthropicApiKeyEnvVar'),
+            }) }}
+        </div>
+        <div style="flex: 1;">
+            {{ forms.selectField({
+                label: 'Default Model',
+                instructions: 'The default model for new chats.',
+                id: 'anthropicModel',
+                name: 'anthropicModel',
+                value: settings.anthropicModel,
+                options: modelOptions.anthropic ?? [],
+                errors: settings.getErrors('anthropicModel'),
+            }) }}
+        </div>
+    </div>
 
-{{ forms.textField({
-    label: 'Max Context Tokens',
-    instructions: 'Maximum token budget for entry context sent to the AI.',
-    id: 'maxContextTokens',
-    name: 'maxContextTokens',
-    value: settings.maxContextTokens,
-    type: 'number',
-    min: 1000,
-    max: 32000,
-    step: 1000,
-}) }}
+    <hr>
 
-{{ forms.textField({
-    label: 'Default Search Limit',
-    instructions: 'Default number of results returned by search.',
-    id: 'defaultSearchLimit',
-    name: 'defaultSearchLimit',
-    value: settings.defaultSearchLimit,
-    type: 'number',
-    min: 1,
-    max: 100,
-}) }}
+    <h3>Google Gemini</h3>
 
-{{ forms.textField({
-    label: 'Default Serialization Depth',
-    instructions: 'Default depth for nested entry serialization.',
-    id: 'defaultSerializationDepth',
-    name: 'defaultSerializationDepth',
-    value: settings.defaultSerializationDepth,
-    type: 'number',
-    min: 1,
-    max: 10,
-}) }}
+    <div class="flex" style="gap: 24px;">
+        <div style="flex: 3;">
+            {{ forms.autosuggestField({
+                label: 'API Key Environment Variable',
+                instructions: 'The environment variable name containing your Gemini API key.',
+                id: 'geminiApiKeyEnvVar',
+                name: 'geminiApiKeyEnvVar',
+                value: settings.geminiApiKeyEnvVar,
+                suggestEnvVars: true,
+                placeholder: 'GEMINI_API_KEY',
+                errors: settings.getErrors('geminiApiKeyEnvVar'),
+            }) }}
+        </div>
+        <div style="flex: 1;">
+            {{ forms.selectField({
+                label: 'Default Model',
+                instructions: 'The default model for new chats.',
+                id: 'geminiModel',
+                name: 'geminiModel',
+                value: settings.geminiModel,
+                options: modelOptions.gemini ?? [],
+                errors: settings.getErrors('geminiModel'),
+            }) }}
+        </div>
+    </div>
 
-{{ forms.textField({
-    label: 'Max Serialization Depth',
-    instructions: 'Maximum allowed serialization depth.',
-    id: 'maxSerializationDepth',
-    name: 'maxSerializationDepth',
-    value: settings.maxSerializationDepth,
-    type: 'number',
-    min: 1,
-    max: 10,
-}) }}
+</div>
 
-<hr>
+{# ── Tab: Permissions ────────────────────────────────────────────── #}
 
-<h2>Data Retention</h2>
+<div class="co-pilot-tab-content" data-tab-content="permissions">
 
-{{ forms.textField({
-    label: 'Audit Log Retention (Days)',
-    instructions: 'Number of days to keep audit log entries. Older entries are automatically deleted during garbage collection. Set to 0 to keep logs indefinitely.',
-    id: 'auditLogRetentionDays',
-    name: 'auditLogRetentionDays',
-    value: settings.auditLogRetentionDays,
-    type: 'number',
-    min: 0,
-    max: 365,
-}) }}
+    <h3>Section Access</h3>
+    <p class="light">Configure which sections the AI can access. This works like GraphQL schema permissions.</p>
+
+    {% set sections = craft.app.entries.allSections %}
+
+    {% if sections|length %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>Section</th>
+                    <th class="thin centeralign">Blocked</th>
+                    <th class="thin centeralign">Read Only</th>
+                    <th class="thin centeralign">Read + Write</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for section in sections %}
+                    {% set currentAccess = settings.sectionAccess[section.uid] ?? 'readWrite' %}
+                    <tr>
+                        <td>
+                            <strong>{{ section.name }}</strong>
+                            <span class="light"> &ndash; {{ section.handle }}</span>
+                        </td>
+                        <td class="thin centeralign">
+                            <input type="radio"
+                                   name="sectionAccess[{{ section.uid }}]"
+                                   value="blocked"
+                                   {{ currentAccess == 'blocked' ? 'checked' }}>
+                        </td>
+                        <td class="thin centeralign">
+                            <input type="radio"
+                                   name="sectionAccess[{{ section.uid }}]"
+                                   value="readOnly"
+                                   {{ currentAccess == 'readOnly' ? 'checked' }}>
+                        </td>
+                        <td class="thin centeralign">
+                            <input type="radio"
+                                   name="sectionAccess[{{ section.uid }}]"
+                                   value="readWrite"
+                                   {{ currentAccess == 'readWrite' ? 'checked' }}>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="light">No sections found.</p>
+    {% endif %}
+
+    <hr>
+
+    <h3>Plugin Data Blocklist</h3>
+    <p class="light">Plugins that contain sensitive user data are blocked by default. Unblock at your own risk.</p>
+
+    {% set pluginOptions = [
+        { label: 'Formie (form submissions)', value: 'formie' },
+        { label: 'Freeform (form submissions)', value: 'freeform' },
+        { label: 'Campaign (email lists)', value: 'campaign' },
+    ] %}
+
+    {% for option in pluginOptions %}
+        {{ forms.checkboxField({
+            label: option.label,
+            id: 'blockedPlugin-' ~ option.value,
+            name: 'blockedPlugins[]',
+            value: option.value,
+            checked: option.value in settings.blockedPlugins,
+        }) }}
+    {% endfor %}
+
+</div>
+
+{# ── Tab: Advanced ───────────────────────────────────────────────── #}
+
+<div class="co-pilot-tab-content" data-tab-content="advanced">
+
+    <h3>Web Search</h3>
+
+    {{ forms.lightswitchField({
+        label: 'Enable Web Search',
+        instructions: "Allow the AI to search the web. Uses Anthropic's built-in web search (Brave Search). Additional costs apply. Only available for Anthropic.",
+        id: 'webSearchEnabled',
+        name: 'webSearchEnabled',
+        on: settings.webSearchEnabled,
+        errors: settings.getErrors('webSearchEnabled'),
+    }) }}
+
+    <hr>
+
+    <h3>Agent</h3>
+
+    {{ forms.textField({
+        label: 'Max Agent Iterations',
+        instructions: 'Maximum number of tool call iterations per request.',
+        id: 'maxAgentIterations',
+        name: 'maxAgentIterations',
+        value: settings.maxAgentIterations,
+        type: 'number',
+        min: 1,
+        max: 50,
+        errors: settings.getErrors('maxAgentIterations'),
+    }) }}
+
+    {{ forms.textField({
+        label: 'Max Context Tokens',
+        instructions: 'Maximum token budget for entry context sent to the AI.',
+        id: 'maxContextTokens',
+        name: 'maxContextTokens',
+        value: settings.maxContextTokens,
+        type: 'number',
+        min: 1000,
+        max: 128000,
+        step: 1000,
+        errors: settings.getErrors('maxContextTokens'),
+    }) }}
+
+    {{ forms.textField({
+        label: 'Default Search Limit',
+        instructions: 'Default number of results returned by search.',
+        id: 'defaultSearchLimit',
+        name: 'defaultSearchLimit',
+        value: settings.defaultSearchLimit,
+        type: 'number',
+        min: 1,
+        max: 100,
+        errors: settings.getErrors('defaultSearchLimit'),
+    }) }}
+
+    <hr>
+
+    <h3>Serialization</h3>
+
+    {{ forms.textField({
+        label: 'Default Serialization Depth',
+        instructions: 'Default depth for nested entry serialization.',
+        id: 'defaultSerializationDepth',
+        name: 'defaultSerializationDepth',
+        value: settings.defaultSerializationDepth,
+        type: 'number',
+        min: 1,
+        max: 10,
+        errors: settings.getErrors('defaultSerializationDepth'),
+    }) }}
+
+    {{ forms.textField({
+        label: 'Max Serialization Depth',
+        instructions: 'Maximum allowed serialization depth.',
+        id: 'maxSerializationDepth',
+        name: 'maxSerializationDepth',
+        value: settings.maxSerializationDepth,
+        type: 'number',
+        min: 1,
+        max: 10,
+        errors: settings.getErrors('maxSerializationDepth'),
+    }) }}
+
+    <hr>
+
+    <h3>Data Retention</h3>
+
+    {{ forms.textField({
+        label: 'Audit Log Retention (Days)',
+        instructions: 'Number of days to keep audit log entries. Older entries are automatically deleted during garbage collection. Set to 0 to keep logs indefinitely.',
+        id: 'auditLogRetentionDays',
+        name: 'auditLogRetentionDays',
+        value: settings.auditLogRetentionDays,
+        type: 'number',
+        min: 0,
+        max: 365,
+        errors: settings.getErrors('auditLogRetentionDays'),
+    }) }}
+
+</div>
+
+<script>
+    (function() {
+        const tabs = document.querySelectorAll('.co-pilot-tabs button');
+        const contents = document.querySelectorAll('.co-pilot-tab-content');
+
+        tabs.forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                const target = tab.getAttribute('data-tab');
+
+                tabs.forEach(function(t) { t.classList.remove('active'); });
+                contents.forEach(function(c) { c.classList.remove('active'); });
+
+                tab.classList.add('active');
+                document.querySelector('[data-tab-content="' + target + '"]').classList.add('active');
+            });
+        });
+    })();
+</script>

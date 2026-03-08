@@ -21,7 +21,7 @@ class GeminiProvider implements ProviderInterface
         ?string $model = null,
     ): AIResponse {
         $settings = CoPilot::getInstance()->getSettings();
-        $apiKey = App::env($settings->geminiApiKeyEnvVar);
+        $apiKey = App::parseEnv($settings->geminiApiKeyEnvVar);
 
         if (!$apiKey) {
             return AIResponse::error('Gemini API key not configured. Set the environment variable ' . $settings->geminiApiKeyEnvVar);
@@ -43,7 +43,7 @@ class GeminiProvider implements ProviderInterface
         callable $onChunk,
     ): void {
         $settings = CoPilot::getInstance()->getSettings();
-        $apiKey = App::env($settings->geminiApiKeyEnvVar);
+        $apiKey = App::parseEnv($settings->geminiApiKeyEnvVar);
 
         if (!$apiKey) {
             $onChunk(new StreamChunk('error', error: 'Gemini API key not configured.'));

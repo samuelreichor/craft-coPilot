@@ -75,16 +75,29 @@ class ChatController extends Controller
 
         $plugin = CoPilot::getInstance();
         $settings = $plugin->getSettings();
-        $provider = $plugin->providerService->getActiveProvider();
+        $configuredProviders = $plugin->providerService->getConfiguredProviders();
+        $defaultProvider = $plugin->providerService->getActiveProvider();
 
-        $modelProperty = $settings->activeProvider . 'Model';
+        $modelProperty = $settings->defaultProvider . 'Model';
         $currentModel = $settings->$modelProperty ?? null;
 
+        $providers = [];
+        foreach ($configuredProviders as $handle => $provider) {
+            $provModelProp = $handle . 'Model';
+            $providers[] = [
+                'handle' => $handle,
+                'name' => $provider->getName(),
+                'models' => $provider->getAvailableModels(),
+                'defaultModel' => $settings->$provModelProp ?? null,
+            ];
+        }
+
         return $this->asJson([
-            'provider' => $settings->activeProvider,
-            'providerName' => $provider->getName(),
-            'models' => $provider->getAvailableModels(),
+            'provider' => $settings->defaultProvider,
+            'providerName' => $defaultProvider->getName(),
+            'models' => $defaultProvider->getAvailableModels(),
             'currentModel' => $currentModel,
+            'providers' => $providers,
         ]);
     }
 
@@ -289,6 +302,7 @@ class ChatController extends Controller
 
         $siteHandle = $this->request->getBodyParam('siteHandle');
         $executionMode = $this->request->getBodyParam('executionMode');
+        $providerHandle = $this->request->getBodyParam('provider');
 
         $result = $plugin
             ->agentService
@@ -300,6 +314,7 @@ class ChatController extends Controller
                 $attachments,
                 $siteHandle,
                 $executionMode,
+                $providerHandle,
             );
 
         $persistContextType = $contextType === 'entry' ? 'entry' : 'global';
@@ -358,6 +373,7 @@ class ChatController extends Controller
         $attachments = $body['attachments'] ?? [];
         $siteHandle = $body['siteHandle'] ?? null;
         $executionMode = $body['executionMode'] ?? null;
+        $providerHandle = $body['provider'] ?? null;
 
         if ($message === '') {
             $this->sendSSE('error', ['message' => 'Message is required.']);
@@ -384,6 +400,7 @@ class ChatController extends Controller
                 $attachments,
                 $siteHandle,
                 $executionMode,
+                $providerHandle,
             );
 
         $persistContextType = $contextType === 'entry' ? 'entry' : 'global';

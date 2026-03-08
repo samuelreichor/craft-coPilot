@@ -1,0 +1,59 @@
+{% import '_includes/forms.twig' as forms %}
+
+    {{ forms.selectField({
+        label: 'Execution Mode',
+        instructions: 'In **Supervised** mode the agent asks for confirmation before bulk or destructive changes. In **Autonomous** mode it executes everything directly.',
+        id: 'agentExecutionMode',
+        name: 'agentExecutionMode',
+        value: settings.agentExecutionMode,
+        options: [
+            { label: 'Supervised', value: 'supervised' },
+            { label: 'Autonomous', value: 'autonomous' },
+        ],
+        errors: settings.getErrors('agentExecutionMode'),
+    }) }}
+
+    <hr>
+
+    <h3>Element Persistence</h3>
+
+    {{ forms.selectField({
+        label: 'Element Update Behavior',
+        instructions: 'How entry updates are saved. **Direct Save** applies changes immediately. **Draft** creates a new named draft. **Provisional Draft** saves as unsaved changes visible in the control panel.',
+        id: 'elementUpdateBehavior',
+        name: 'elementUpdateBehavior',
+        value: settings.elementUpdateBehavior,
+        options: [
+            { label: 'Provisional Draft', value: 'provisionalDraft' },
+            { label: 'Direct Save', value: 'directSave' },
+            { label: 'Draft', value: 'draft' },
+        ],
+        errors: settings.getErrors('elementUpdateBehavior'),
+    }) }}
+
+    {{ forms.selectField({
+        label: 'Element Creation Behavior',
+        instructions: 'How new entries are created. **Draft** creates an unpublished draft. **Direct Save** publishes immediately. **Disabled** publishes but as a disabled entry.',
+        id: 'elementCreationBehavior',
+        name: 'elementCreationBehavior',
+        value: settings.elementCreationBehavior,
+        options: [
+            { label: 'Draft', value: 'draft' },
+            { label: 'Direct Save', value: 'directSave' },
+            { label: 'Disabled', value: 'disabled' },
+        ],
+        errors: settings.getErrors('elementCreationBehavior'),
+    }) }}
+
+    <hr>
+
+    <h3>Web Search</h3>
+
+    {{ forms.lightswitchField({
+        label: 'Enable Web Search',
+        instructions: "Allow the AI to search the web. Uses Anthropic's built-in web search (Brave Search). Additional costs apply. Only available for Anthropic.",
+        id: 'webSearchEnabled',
+        name: 'webSearchEnabled',
+        on: settings.webSearchEnabled,
+        errors: settings.getErrors('webSearchEnabled'),
+    }) }}

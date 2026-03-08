@@ -1,12 +1,17 @@
 <script setup lang="ts">
+import type { ProviderInfo } from '../types';
+
 defineProps<{
   conversationId: number | null;
   isExporting: boolean;
+  providers: ProviderInfo[];
+  currentProvider: string;
 }>();
 
 defineEmits<{
   'new-chat': [];
   'export-debug': [];
+  'update:currentProvider': [value: string];
 }>();
 </script>
 
@@ -22,6 +27,25 @@ defineEmits<{
     >
       {{ isExporting ? 'Exporting...' : 'Export Debug' }}
     </button>
+    <div v-if="providers.length > 1" class="select">
+      <select
+        :value="currentProvider"
+        @change="
+          $emit(
+            'update:currentProvider',
+            ($event.target as HTMLSelectElement).value,
+          )
+        "
+      >
+        <option
+          v-for="provider in providers"
+          :key="provider.handle"
+          :value="provider.handle"
+        >
+          {{ provider.name }}
+        </option>
+      </select>
+    </div>
     <button type="button" class="btn submit" @click="$emit('new-chat')">
       New Chat +
     </button>

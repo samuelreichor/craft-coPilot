@@ -13,15 +13,55 @@ class SettingsController extends Controller
 {
     protected array|bool|int $allowAnonymous = false;
 
-    public function beforeAction($action): bool
+    /**
+     * GET /admin/co-pilot/settings
+     */
+    public function actionIndex(): Response
     {
-        if (!parent::beforeAction($action)) {
-            return false;
+        $this->requireAdmin();
+
+        $plugin = CoPilot::getInstance();
+        $providers = $plugin->providerService->getProviders();
+
+        $modelOptions = [];
+        foreach ($providers as $handle => $provider) {
+            $modelOptions[$handle] = array_map(
+                fn(string $id) => ['label' => $id, 'value' => $id],
+                $provider->getAvailableModels(),
+            );
         }
 
-        $this->requirePermission(Constants::PERMISSION_VIEW_BRAND_VOICE);
+        return $this->renderTemplate('co-pilot/settings/index', [
+            'plugin' => $plugin,
+            'settings' => $plugin->getSettings(),
+            'modelOptions' => $modelOptions,
+        ]);
+    }
 
-        return true;
+    /**
+     * POST /actions/co-pilot/settings/save-settings
+     */
+    public function actionSaveSettings(): ?Response
+    {
+        $this->requirePostRequest();
+        $this->requireAdmin();
+
+        $plugin = CoPilot::getInstance();
+        $posted = $this->request->getBodyParam('settings', []);
+
+        // Merge with existing settings so values not in the form aren't reset to defaults
+        $settings = array_merge($plugin->getSettings()->toArray(), $posted);
+
+        if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $settings)) {
+            Craft::$app->getSession()->setError('Couldn\'t save plugin settings.');
+
+            return null;
+        }
+
+        $plugin->schemaService->invalidateCache();
+        Craft::$app->getSession()->setNotice('Plugin settings saved.');
+
+        return $this->redirectToPostedUrl();
     }
 
     /**
@@ -29,6 +69,8 @@ class SettingsController extends Controller
      */
     public function actionBrandVoice(): Response
     {
+        $this->requirePermission(Constants::PERMISSION_VIEW_BRAND_VOICE);
+
         $user = Craft::$app->getUser()->getIdentity();
 
         return $this->renderTemplate('co-pilot/settings/brand-voice', [

@@ -1,0 +1,42 @@
+{% extends '_layouts/cp' %}
+
+{% set title = 'CoPilot Settings' %}
+{% set fullPageForm = true %}
+
+{% set tabs = {
+    providers: { label: 'Providers', url: '#providers' },
+    agent: { label: 'Agent', url: '#agent' },
+    permissions: { label: 'Permissions', url: '#permissions' },
+    advanced: { label: 'Advanced', url: '#advanced' },
+} %}
+
+{% block content %}
+
+    <input type="hidden" name="action" value="co-pilot/settings/save-settings">
+    {{ redirectInput('co-pilot/settings') }}
+
+    <div id="providers">
+        {% namespace 'settings' %}
+            {% include 'co-pilot/settings/_tabs/providers' %}
+        {% endnamespace %}
+    </div>
+
+    <div id="agent" class="hidden">
+        {% namespace 'settings' %}
+            {% include 'co-pilot/settings/_tabs/agent' %}
+        {% endnamespace %}
+    </div>
+
+    <div id="permissions" class="hidden">
+        {% namespace 'settings' %}
+            {% include 'co-pilot/settings/_tabs/permissions' %}
+        {% endnamespace %}
+    </div>
+
+    <div id="advanced" class="hidden">
+        {% namespace 'settings' %}
+            {% include 'co-pilot/settings/_tabs/advanced' %}
+        {% endnamespace %}
+    </div>
+
+{% endblock %}

@@ -10,6 +10,7 @@ const props = withDefaults(defineProps<ChatPanelProps & {
   siteHandle?: string | null;
   models?: string[];
   executionMode?: string;
+  provider?: string;
 }>(), {
   contextId: null,
   initialConversationId: null,
@@ -18,6 +19,7 @@ const props = withDefaults(defineProps<ChatPanelProps & {
   siteHandle: null,
   models: () => [],
   executionMode: 'supervised',
+  provider: '',
 });
 
 const emit = defineEmits<{
@@ -38,7 +40,7 @@ const chat = useChat({
 });
 
 function handleSend(text: string) {
-  chat.sendMessage(text, props.model || undefined, props.executionMode || undefined);
+  chat.sendMessage(text, props.model || undefined, props.executionMode || undefined, props.provider || undefined);
 }
 
 function setMessages(msgs: UIMessage[]) {

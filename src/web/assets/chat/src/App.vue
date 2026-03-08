@@ -9,7 +9,8 @@ import ChatPanel from './components/ChatPanel.vue';
 
 const init = window.__COPILOT_INIT__ || {};
 
-const { models, currentModel } = useModels();
+const { models, currentModel, currentProvider, providers, switchProvider } =
+  useModels();
 const executionMode = ref('supervised');
 const {
   conversations,
@@ -82,8 +83,11 @@ onMounted(() => {
     <HeaderActions
       :conversation-id="activeConversationId"
       :is-exporting="isExporting"
+      :providers="providers"
+      :current-provider="currentProvider"
       @new-chat="newChat"
       @export-debug="handleExportDebug"
+      @update:current-provider="switchProvider($event)"
     />
   </Teleport>
   <Teleport to="#co-pilot-sidebar-mount">
@@ -100,6 +104,7 @@ onMounted(() => {
     :context-id="init.contextId"
     :model="currentModel"
     :models="models"
+    :provider="currentProvider"
     :execution-mode="executionMode"
     :site-handle="init.siteHandle"
     @conversation-created="onConversationCreated"

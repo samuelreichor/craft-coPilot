@@ -22,7 +22,7 @@ class AnthropicProvider implements ProviderInterface
         ?string $model = null,
     ): AIResponse {
         $settings = CoPilot::getInstance()->getSettings();
-        $apiKey = App::env($settings->anthropicApiKeyEnvVar);
+        $apiKey = App::parseEnv($settings->anthropicApiKeyEnvVar);
 
         if (!$apiKey) {
             return AIResponse::error('Anthropic API key not configured. Set the environment variable ' . $settings->anthropicApiKeyEnvVar);
@@ -63,7 +63,7 @@ class AnthropicProvider implements ProviderInterface
         callable $onChunk,
     ): void {
         $settings = CoPilot::getInstance()->getSettings();
-        $apiKey = App::env($settings->anthropicApiKeyEnvVar);
+        $apiKey = App::parseEnv($settings->anthropicApiKeyEnvVar);
 
         if (!$apiKey) {
             $onChunk(new StreamChunk('error', error: 'Anthropic API key not configured.'));

@@ -15,7 +15,7 @@ use samuelreichor\coPilot\enums\SectionAccess;
 class Settings extends Model
 {
     // Provider settings
-    public string $activeProvider = 'openai';
+    public string $defaultProvider = 'openai';
     public string $openaiModel = 'gpt-4.1';
     public string $anthropicModel = 'claude-sonnet-4-6';
     public string $geminiModel = 'gemini-2.5-flash';
@@ -76,9 +76,9 @@ class Settings extends Model
     // Agent behavior
     public string $agentExecutionMode = 'supervised';
     public int $maxAgentIterations = 10;
-    public int $defaultSerializationDepth = 2;
+    public int $defaultSerializationDepth = 3;
     public int $maxSerializationDepth = 4;
-    public int $maxContextTokens = 8000;
+    public int $maxContextTokens = 32000;
     public int $defaultSearchLimit = 20;
 
     // Element persistence behavior
@@ -91,12 +91,12 @@ class Settings extends Model
     public function defineRules(): array
     {
         return [
-            [['activeProvider', 'openaiModel', 'anthropicModel', 'geminiModel'], 'required'],
-            ['activeProvider', 'in', 'range' => array_column(Provider::cases(), 'value')],
+            [['defaultProvider', 'openaiModel', 'anthropicModel', 'geminiModel'], 'required'],
+            ['defaultProvider', 'in', 'range' => array_column(Provider::cases(), 'value')],
             ['maxAgentIterations', 'integer', 'min' => 1, 'max' => 50],
             ['defaultSerializationDepth', 'integer', 'min' => 1, 'max' => 10],
             ['maxSerializationDepth', 'integer', 'min' => 1, 'max' => 10],
-            ['maxContextTokens', 'integer', 'min' => 1000, 'max' => 32000],
+            ['maxContextTokens', 'integer', 'min' => 1000, 'max' => 128000],
             ['defaultSearchLimit', 'integer', 'min' => 1, 'max' => 100],
             ['auditLogRetentionDays', 'integer', 'min' => 1, 'max' => 365],
             [['brandVoice', 'glossary', 'forbiddenWords'], 'string'],

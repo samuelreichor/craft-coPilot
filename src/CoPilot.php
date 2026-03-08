@@ -10,6 +10,7 @@ use craft\elements\Entry;
 use craft\events\DefineHtmlEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
+use craft\helpers\UrlHelper;
 use craft\services\Gc;
 use craft\services\UserPermissions;
 use craft\web\UrlManager;
@@ -134,23 +135,9 @@ class CoPilot extends Plugin
         return Craft::createObject(Settings::class);
     }
 
-    protected function settingsHtml(): ?string
+    public function getSettingsResponse(): mixed
     {
-        $providers = $this->providerService->getProviders();
-
-        $modelOptions = [];
-        foreach ($providers as $handle => $provider) {
-            $modelOptions[$handle] = array_map(
-                fn(string $id) => ['label' => $id, 'value' => $id],
-                $provider->getAvailableModels(),
-            );
-        }
-
-        return Craft::$app->view->renderTemplate('co-pilot/_settings.twig', [
-            'plugin' => $this,
-            'settings' => $this->getSettings(),
-            'modelOptions' => $modelOptions,
-        ]);
+        return Craft::$app->getResponse()->redirect(UrlHelper::cpUrl('co-pilot/settings'));
     }
 
     public function afterSaveSettings(): void
@@ -192,6 +179,7 @@ class CoPilot extends Plugin
             function(RegisterUrlRulesEvent $event) {
                 $event->rules['co-pilot'] = 'co-pilot/chat/index';
                 $event->rules['co-pilot/<conversationId:\d+>'] = 'co-pilot/chat/index';
+                $event->rules['co-pilot/settings'] = 'co-pilot/settings/index';
                 $event->rules['co-pilot/brand-voice'] = 'co-pilot/settings/brand-voice';
                 $event->rules['co-pilot/audit-log'] = 'co-pilot/audit-log/index';
             },

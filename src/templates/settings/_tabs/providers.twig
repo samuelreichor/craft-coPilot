@@ -1,0 +1,105 @@
+{% import '_includes/forms.twig' as forms %}
+
+    {{ forms.selectField({
+        label: 'Default Provider',
+        instructions: 'Select the default AI provider.',
+        id: 'defaultProvider',
+        name: 'defaultProvider',
+        value: settings.defaultProvider,
+        options: [
+            { label: 'OpenAI', value: 'openai' },
+            { label: 'Anthropic', value: 'anthropic' },
+            { label: 'Google Gemini', value: 'gemini' },
+        ],
+        errors: settings.getErrors('defaultProvider'),
+    }) }}
+
+    <hr>
+
+    <h3>OpenAI</h3>
+
+    <div class="flex" style="gap: 24px;">
+        <div style="flex: 3;">
+            {{ forms.autosuggestField({
+                label: 'API Key Environment Variable',
+                instructions: 'The environment variable name containing your OpenAI API key.',
+                id: 'openaiApiKeyEnvVar',
+                name: 'openaiApiKeyEnvVar',
+                value: settings.openaiApiKeyEnvVar,
+                suggestEnvVars: true,
+                placeholder: 'OPENAI_API_KEY',
+                errors: settings.getErrors('openaiApiKeyEnvVar'),
+            }) }}
+        </div>
+        <div style="flex: 1;">
+            {{ forms.selectField({
+                label: 'Default Model',
+                instructions: 'The default model for new chats.',
+                id: 'openaiModel',
+                name: 'openaiModel',
+                value: settings.openaiModel,
+                options: modelOptions.openai ?? [],
+                errors: settings.getErrors('openaiModel'),
+            }) }}
+        </div>
+    </div>
+
+    <hr>
+
+    <h3>Anthropic</h3>
+
+    <div class="flex" style="gap: 24px;">
+        <div style="flex: 3;">
+            {{ forms.autosuggestField({
+                label: 'API Key Environment Variable',
+                instructions: 'The environment variable name containing your Anthropic API key.',
+                id: 'anthropicApiKeyEnvVar',
+                name: 'anthropicApiKeyEnvVar',
+                value: settings.anthropicApiKeyEnvVar,
+                suggestEnvVars: true,
+                placeholder: 'ANTHROPIC_API_KEY',
+                errors: settings.getErrors('anthropicApiKeyEnvVar'),
+            }) }}
+        </div>
+        <div style="flex: 1;">
+            {{ forms.selectField({
+                label: 'Default Model',
+                instructions: 'The default model for new chats.',
+                id: 'anthropicModel',
+                name: 'anthropicModel',
+                value: settings.anthropicModel,
+                options: modelOptions.anthropic ?? [],
+                errors: settings.getErrors('anthropicModel'),
+            }) }}
+        </div>
+    </div>
+
+    <hr>
+
+    <h3>Google Gemini</h3>
+
+    <div class="flex" style="gap: 24px;">
+        <div style="flex: 3;">
+            {{ forms.autosuggestField({
+                label: 'API Key Environment Variable',
+                instructions: 'The environment variable name containing your Gemini API key.',
+                id: 'geminiApiKeyEnvVar',
+                name: 'geminiApiKeyEnvVar',
+                value: settings.geminiApiKeyEnvVar,
+                suggestEnvVars: true,
+                placeholder: 'GEMINI_API_KEY',
+                errors: settings.getErrors('geminiApiKeyEnvVar'),
+            }) }}
+        </div>
+        <div style="flex: 1;">
+            {{ forms.selectField({
+                label: 'Default Model',
+                instructions: 'The default model for new chats.',
+                id: 'geminiModel',
+                name: 'geminiModel',
+                value: settings.geminiModel,
+                options: modelOptions.gemini ?? [],
+                errors: settings.getErrors('geminiModel'),
+            }) }}
+        </div>
+    </div>

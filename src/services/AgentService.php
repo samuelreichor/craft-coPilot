@@ -56,6 +56,7 @@ class AgentService extends Component
         array $attachments = [],
         ?string $siteHandle = null,
         ?string $executionMode = null,
+        ?string $providerHandle = null,
     ): array {
         $plugin = CoPilot::getInstance();
 
@@ -78,7 +79,7 @@ class AgentService extends Component
         $messages = $this->buildMessagesArray($conversationHistory, $userMessage);
         $toolDefs = $this->getToolDefinitions();
         $settings = $plugin->getSettings();
-        $provider = $plugin->providerService->getActiveProvider();
+        $provider = $plugin->providerService->getActiveProvider($providerHandle);
 
         $totalInputTokens = 0;
         $totalOutputTokens = 0;
@@ -200,6 +201,7 @@ class AgentService extends Component
         array $attachments = [],
         ?string $siteHandle = null,
         ?string $executionMode = null,
+        ?string $providerHandle = null,
     ): array {
         $plugin = CoPilot::getInstance();
 
@@ -220,7 +222,7 @@ class AgentService extends Component
         $messages = $this->buildMessagesArray($conversationHistory, $userMessage);
         $toolDefs = $this->getToolDefinitions();
         $settings = $plugin->getSettings();
-        $provider = $plugin->providerService->getActiveProvider();
+        $provider = $plugin->providerService->getActiveProvider($providerHandle);
 
         $totalInputTokens = 0;
         $totalOutputTokens = 0;
@@ -517,12 +519,12 @@ class AgentService extends Component
         array $messages,
         int $iterations,
     ): array {
-        $modelProperty = $settings->activeProvider . 'Model';
+        $modelProperty = $settings->defaultProvider . 'Model';
 
         return [
             'systemPrompt' => $systemPrompt,
             'model' => $model ?? $settings->$modelProperty ?? null,
-            'provider' => $settings->activeProvider,
+            'provider' => $settings->defaultProvider,
             'messages' => $messages,
             'iterations' => $iterations,
         ];
