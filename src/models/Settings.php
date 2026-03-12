@@ -88,7 +88,7 @@ class Settings extends Model
             ['defaultSearchLimit', 'integer', 'min' => 1, 'max' => 100],
             ['auditLogRetentionDays', 'integer', 'min' => 1, 'max' => 365],
             [['openaiApiKeyEnvVar', 'anthropicApiKeyEnvVar', 'geminiApiKeyEnvVar'], 'string'],
-            ['webSearchEnabled', 'debug', 'boolean'],
+            [['webSearchEnabled', 'debug'], 'boolean'],
             ['agentExecutionMode', 'in', 'range' => array_column(AgentExecutionMode::cases(), 'value')],
             ['elementUpdateBehavior', 'in', 'range' => array_column(ElementUpdateBehavior::cases(), 'value')],
             ['elementCreationBehavior', 'in', 'range' => array_column(ElementCreationBehavior::cases(), 'value')],
