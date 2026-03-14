@@ -38,6 +38,25 @@ class DescribeSectionTool implements ToolInterface
             return ['error' => 'Missing required parameter: section'];
         }
 
-        return CoPilot::getInstance()->schemaService->getSectionSchema($section);
+        $result = CoPilot::getInstance()->schemaService->getSectionSchema($section);
+
+        if (isset($result['error'])) {
+            return $result;
+        }
+
+        $siteHandle = $arguments['_siteHandle'] ?? null;
+        $contextService = CoPilot::getInstance()->contextService;
+
+        foreach ($result['entryTypes'] as &$entryType) {
+            $examples = $contextService->getExampleEntries($section, $entryType['handle'], 1, $siteHandle);
+
+            if ($examples !== []) {
+                $entryType['examples'] = $examples;
+            }
+        }
+
+        unset($entryType);
+
+        return $result;
     }
 }

@@ -67,9 +67,9 @@ class ContextService extends Component
 
         return [
             'entryId' => $entry->id,
-            'title' => $entry->title ?: $entry->getSection()->name,
+            'title' => $entry->title ?: $entry->getSection()?->name ?? '(untitled)',
             'slug' => $entry->slug,
-            'section' => $entry->getSection()->handle,
+            'section' => $entry->getSection()?->handle,
             'type' => $entry->getType()->handle,
             'status' => $entry->getStatus(),
             'url' => $entry->url,
@@ -146,6 +146,34 @@ class ContextService extends Component
         }
 
         return $bestLang;
+    }
+
+    /**
+     * @return array<array<string, mixed>>
+     */
+    public function getExampleEntries(?string $sectionHandle, string $entryTypeHandle, int $limit = 2, ?string $siteHandle = null): array
+    {
+        $query = Entry::find()
+            ->type($entryTypeHandle)
+            ->status('live')
+            ->orderBy(['dateCreated' => SORT_DESC])
+            ->limit($limit);
+
+        if ($sectionHandle !== null) {
+            $query->section($sectionHandle);
+        }
+
+        if ($siteHandle !== null) {
+            $query->site($siteHandle);
+        }
+
+        $entries = $query->all();
+        $examples = [];
+        foreach ($entries as $entry) {
+            $examples[] = $this->summarizeEntry($entry);
+        }
+
+        return $examples;
     }
 
     /**

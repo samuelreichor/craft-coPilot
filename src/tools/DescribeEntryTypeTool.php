@@ -38,6 +38,19 @@ class DescribeEntryTypeTool implements ToolInterface
             return ['error' => 'Missing required parameter: handle'];
         }
 
-        return CoPilot::getInstance()->schemaService->getEntryTypeSchema($handle);
+        $result = CoPilot::getInstance()->schemaService->getEntryTypeSchema($handle);
+
+        if (isset($result['error'])) {
+            return $result;
+        }
+
+        $siteHandle = $arguments['_siteHandle'] ?? null;
+        $examples = CoPilot::getInstance()->contextService->getExampleEntries(null, $handle, 2, $siteHandle);
+
+        if ($examples !== []) {
+            $result['examples'] = $examples;
+        }
+
+        return $result;
     }
 }
