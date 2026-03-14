@@ -76,7 +76,10 @@ function collectParam(cmd: SlashCommand) {
       multiSelect: false,
       onSelect: (elements) => {
         if (elements.length) {
-          finishWithAttachment(cmd, { type: 'entry', id: elements[0].id, label: elements[0].label });
+          if (!elements[0].siteId) {
+            console.warn('[CoPilot] Element selector did not return siteId for entry', elements[0].id);
+          }
+          finishWithAttachment(cmd, { type: 'entry', id: elements[0].id, siteId: elements[0].siteId, label: elements[0].label });
         } else {
           cancelParam();
         }
@@ -226,9 +229,13 @@ function selectEntry() {
     multiSelect: false,
     onSelect: (elements) => {
       if (elements.length) {
+        if (!elements[0].siteId) {
+          console.warn('[CoPilot] Element selector did not return siteId for entry', elements[0].id);
+        }
         emit('add-attachment', {
           type: 'entry',
           id: elements[0].id,
+          siteId: elements[0].siteId,
           label: elements[0].label,
         });
       }

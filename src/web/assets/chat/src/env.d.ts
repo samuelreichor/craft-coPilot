@@ -17,7 +17,7 @@ interface CraftStatic {
     elementType: string,
     options: {
       multiSelect?: boolean;
-      onSelect?: (elements: Array<{ id: number; label: string }>) => void;
+      onSelect?: (elements: Array<{ id: number; label: string; siteId?: number }>) => void;
     },
   ): void;
   Slideout: new (
@@ -39,8 +39,10 @@ interface Window {
     conversations?: Array<{ id: number; title: string; dateUpdated: string }>;
     contextId?: number | null;
     activeConversationId?: number | null;
+    siteHandle?: string | null;
   };
   __coPilotEntryId?: number | null;
+  __coPilotSiteHandle?: string | null;
   coPilotApp?: {
     openWithContext: (entryId: number) => void;
   };

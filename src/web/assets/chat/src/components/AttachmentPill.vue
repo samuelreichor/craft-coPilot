@@ -27,9 +27,13 @@ const icon = computed(() => {
 const elementUrl = computed(() => {
   if (!props.readonly || !props.attachment.id) return null;
   if (props.attachment.type !== 'entry' && props.attachment.type !== 'asset') return null;
-  return Craft.getActionUrl('co-pilot/chat/open-element', {
+  const params: Record<string, string> = {
     elementId: String(props.attachment.id),
-  });
+  };
+  if (props.attachment.siteId) {
+    params.siteId = String(props.attachment.siteId);
+  }
+  return Craft.getActionUrl('co-pilot/chat/open-element', params);
 });
 </script>
 

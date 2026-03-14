@@ -8,6 +8,7 @@ import SlideoutApp from './SlideoutApp.vue';
  */
 (function () {
   const contextEntryId = window.__coPilotEntryId;
+  let contextSiteHandle = window.__coPilotSiteHandle ?? null;
 
   let slideout: CraftSlideout | null = null;
   let vueInstance: InstanceType<typeof SlideoutApp> | null = null;
@@ -24,6 +25,7 @@ import SlideoutApp from './SlideoutApp.vue';
       if (mountEl) {
         const app = createApp(SlideoutApp, {
           contextId: contextEntryId,
+          siteHandle: contextSiteHandle,
         });
         vueInstance = app.mount(mountEl) as InstanceType<typeof SlideoutApp>;
       }
@@ -46,6 +48,9 @@ import SlideoutApp from './SlideoutApp.vue';
   window.coPilotApp = {
     openWithContext(newEntryId: number) {
       const entryChanged = newEntryId !== contextEntryId;
+
+      // Always re-read siteHandle — Craft may have updated it
+      contextSiteHandle = window.__coPilotSiteHandle ?? null;
 
       if (entryChanged && slideout) {
         slideout.close();

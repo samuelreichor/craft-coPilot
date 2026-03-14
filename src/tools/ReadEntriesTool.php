@@ -76,20 +76,19 @@ class ReadEntriesTool implements ToolInterface
                 continue;
             }
 
-            $query = Entry::find()->id($entryId)->status(null)->drafts(null);
-
+            $entry = null;
             if ($siteHandle) {
                 $site = Craft::$app->getSites()->getSiteByHandle($siteHandle);
                 if ($site) {
-                    $query->siteId($site->id);
-                } else {
-                    $query->site('*');
+                    $entry = Entry::find()->id($entryId)->status(null)->drafts(null)->siteId($site->id)->one();
                 }
-            } else {
-                $query->site('*');
             }
 
-            $entry = $query->one();
+            // Fallback: search across all sites if not found on the active site
+            if (!$entry) {
+                $entry = Entry::find()->id($entryId)->status(null)->drafts(null)->site('*')->one();
+            }
+
             if (!$entry) {
                 $results[] = ['error' => "Entry #{$entryId} not found."];
                 continue;

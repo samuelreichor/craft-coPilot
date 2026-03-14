@@ -67,7 +67,9 @@ class AgentService extends Component
 
         $contextEntry = null;
         if ($contextEntryId) {
-            $contextEntry = Entry::find()->id($contextEntryId)->status(null)->drafts(null)->site('*')->one();
+            $query = Entry::find()->id($contextEntryId)->status(null)->drafts(null);
+            $query = $siteHandle ? $query->site($siteHandle) : $query->site('*');
+            $contextEntry = $query->one();
         }
 
         $site = $this->resolveSite($siteHandle, $contextEntry);
@@ -212,7 +214,9 @@ class AgentService extends Component
 
         $contextEntry = null;
         if ($contextEntryId) {
-            $contextEntry = Entry::find()->id($contextEntryId)->status(null)->drafts(null)->site('*')->one();
+            $query = Entry::find()->id($contextEntryId)->status(null)->drafts(null);
+            $query = $siteHandle ? $query->site($siteHandle) : $query->site('*');
+            $contextEntry = $query->one();
         }
 
         $site = $this->resolveSite($siteHandle, $contextEntry);
@@ -577,6 +581,42 @@ class AgentService extends Component
                     $serialized = $plugin->contextService->serializeAsset($asset);
                     $contextParts[] = "--- Attached Asset: {$asset->filename} ---\n"
                         . json_encode($serialized, JSON_UNESCAPED_SLASHES) . "\n---";
+                    $processed++;
+                }
+            } elseif ($type === 'entry' && isset($attachment['id'])) {
+                $entryId = (int)$attachment['id'];
+                $siteId = isset($attachment['siteId']) ? (int)$attachment['siteId'] : null;
+
+                $guard = $plugin->permissionGuard->canReadEntry($entryId);
+                if (!$guard['allowed']) {
+                    continue;
+                }
+
+                $entry = null;
+
+                // 1. Try explicit siteId from the element selector modal
+                if ($siteId) {
+                    $entry = Entry::find()->id($entryId)->status(null)->drafts(null)->siteId($siteId)->one();
+                }
+
+                // 2. Fallback: try the active conversation site
+                if (!$entry && $this->activeSiteHandle) {
+                    $activeSite = Craft::$app->getSites()->getSiteByHandle($this->activeSiteHandle);
+                    if ($activeSite) {
+                        $entry = Entry::find()->id($entryId)->status(null)->drafts(null)->siteId($activeSite->id)->one();
+                    }
+                }
+
+                // 3. Final fallback: any site
+                if (!$entry) {
+                    $entry = Entry::find()->id($entryId)->status(null)->drafts(null)->site('*')->one();
+                }
+
+                if ($entry) {
+                    $summary = $plugin->contextService->summarizeEntry($entry);
+                    $siteInfo = $entry->getSite();
+                    $contextParts[] = "--- Attached Entry (site: {$siteInfo->handle}, language: {$siteInfo->language}) ---\n"
+                        . json_encode($summary, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n---";
                     $processed++;
                 }
             } elseif ($type === 'file' && isset($attachment['content']) && is_string($attachment['content'])) {

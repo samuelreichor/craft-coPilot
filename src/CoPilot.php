@@ -251,6 +251,11 @@ class CoPilot extends Plugin
                     return;
                 }
 
+                // Skip nested entries (matrix blocks, content builder blocks)
+                if ($entry->primaryOwnerId !== null) {
+                    return;
+                }
+
                 $user = Craft::$app->getUser()->getIdentity();
                 if (!$user || !$user->can(Constants::PERMISSION_VIEW_CHAT)) {
                     return;
@@ -262,7 +267,7 @@ class CoPilot extends Plugin
 
                 $event->html .= Craft::$app->getView()->renderTemplate(
                     'co-pilot/_toolbar-trigger',
-                    ['entryId' => $entry->id, 'icon' => $icon],
+                    ['entryId' => $entry->id, 'siteHandle' => $entry->getSite()->handle, 'icon' => $icon],
                 );
             },
         );

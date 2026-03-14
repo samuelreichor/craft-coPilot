@@ -1,6 +1,7 @@
 export interface Attachment {
   type: 'entry' | 'asset' | 'file';
   id?: number;
+  siteId?: number;
   label: string;
   file?: File;
   content?: string;
@@ -9,6 +10,7 @@ export interface Attachment {
 export interface AttachmentPayload {
   type: 'entry' | 'asset' | 'file';
   id?: number;
+  siteId?: number;
   label: string;
   content?: string;
 }

@@ -8,6 +8,7 @@ import ChatPanel from './components/ChatPanel.vue';
 
 const props = defineProps<{
   contextId: number;
+  siteHandle?: string | null;
 }>();
 
 const chatPanel = ref<InstanceType<typeof ChatPanel> | null>(null);
@@ -183,6 +184,7 @@ defineExpose({ loadHistory, focusInput });
       ref="chatPanel"
       context-type="entry"
       :context-id="contextId"
+      :site-handle="siteHandle"
       @conversation-created="onConversationCreated"
       @command="handleCommand"
     />

@@ -204,8 +204,17 @@ class ChatController extends Controller
     public function actionOpenElement(): Response
     {
         $elementId = (int)$this->request->getRequiredQueryParam('elementId');
+        $siteId = $this->request->getQueryParam('siteId');
 
-        $element = Craft::$app->getElements()->getElementById($elementId);
+        $element = null;
+        if ($siteId) {
+            $element = Craft::$app->getElements()->getElementById($elementId, null, (int)$siteId);
+        }
+
+        if ($element === null) {
+            $element = Craft::$app->getElements()->getElementById($elementId);
+        }
+
         if ($element === null) {
             throw new NotFoundHttpException('Element not found.');
         }

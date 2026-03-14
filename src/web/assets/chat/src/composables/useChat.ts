@@ -93,7 +93,7 @@ export function useChat(options: UseChatOptions) {
     // Add user message to display
     const msgAttachments = attachments.value
       .filter((a) => a.type !== 'file')
-      .map((a) => ({ type: a.type, id: a.id, label: a.label }) as Attachment);
+      .map((a) => ({ type: a.type, id: a.id, siteId: a.siteId, label: a.label }) as Attachment);
     const fileAttachments = attachments.value
       .filter((a) => a.type === 'file')
       .map((a) => ({ type: a.type, label: a.label }) as Attachment);

@@ -79,7 +79,7 @@ export async function prepareAttachmentsForSend(
         payloads.push({ type: 'file', label: att.label, content });
       }
     } else if (att.type === 'entry' || att.type === 'asset') {
-      payloads.push({ type: att.type, id: att.id, label: att.label });
+      payloads.push({ type: att.type, id: att.id, siteId: att.siteId, label: att.label });
     }
   }
 
