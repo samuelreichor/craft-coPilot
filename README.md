@@ -11,7 +11,7 @@ AI content assistant plugin for Craft CMS 5.
 ## Installation
 
 ```bash
-composer require samuelreichor/craft-co-pilot
+composer require samuelreichor/craft-co-pilot:^0.0.0@RC
 php craft plugin/install co-pilot
 ```
 
