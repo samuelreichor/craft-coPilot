@@ -267,7 +267,7 @@ class CoPilot extends Plugin
 
                 $event->html .= Craft::$app->getView()->renderTemplate(
                     'co-pilot/_toolbar-trigger',
-                    ['entryId' => $entry->id, 'siteHandle' => $entry->getSite()->handle, 'icon' => $icon],
+                    ['entryId' => $entry->getCanonicalId(), 'siteHandle' => $entry->getSite()->handle, 'icon' => $icon],
                 );
             },
         );
