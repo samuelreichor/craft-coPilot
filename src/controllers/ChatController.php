@@ -66,6 +66,19 @@ class ChatController extends Controller
     }
 
     /**
+     * POST /actions/co-pilot/chat/get-commands
+     */
+    public function actionGetCommands(): Response
+    {
+        $this->requirePostRequest();
+        $this->requireAcceptsJson();
+
+        $commands = CoPilot::getInstance()->commandService->getCommandDefinitions();
+
+        return $this->asJson($commands);
+    }
+
+    /**
      * POST /actions/co-pilot/chat/get-models
      */
     public function actionGetModels(): Response
@@ -162,6 +175,8 @@ class ChatController extends Controller
 
         $user = Craft::$app->getUser()->getIdentity();
 
+        $plugin = CoPilot::getInstance();
+
         $export = [
             'meta' => [
                 'conversationId' => $conversation->id,
@@ -171,7 +186,11 @@ class ChatController extends Controller
                 'contextId' => $conversation->contextId,
                 'exportedAt' => (new \DateTimeImmutable())->format('c'),
                 'exportedBy' => $user ? $user->username : null,
+                'craftVersion' => Craft::$app->getVersion(),
+                'copilotVersion' => $plugin->getVersion(),
+                'phpVersion' => PHP_VERSION,
             ],
+            'systemPrompt' => $conversation->lastSystemPrompt,
             'turns' => $conversation->debugLog,
             'auditLog' => $auditLog,
         ];
@@ -589,6 +608,67 @@ class ChatController extends Controller
         }
 
         return $uiMessages;
+    }
+
+    /**
+     * POST /actions/co-pilot/chat/compact-conversation
+     */
+    public function actionCompactConversation(): Response
+    {
+        $this->requirePostRequest();
+        $this->requireAcceptsJson();
+
+        $id = $this->request->getRequiredBodyParam('id');
+        $conversation = $this->getConversation((int)$id);
+
+        if (empty($conversation->messages)) {
+            return $this->asJson(['success' => false, 'error' => 'No messages to compact.']);
+        }
+
+        $serialized = '';
+        foreach ($conversation->messages as $msg) {
+            $role = $msg->role->value;
+            $content = is_array($msg->content) ? json_encode($msg->content) : ($msg->content ?? '');
+            if ($content !== '') {
+                $serialized .= "{$role}: {$content}\n";
+            }
+        }
+
+        try {
+            $provider = CoPilot::getInstance()->providerService->getActiveProvider();
+            $response = $provider->chat(
+                'You summarize conversations concisely. Preserve all important context, decisions, and facts so the conversation can continue meaningfully. Respond with only the summary, no preamble.',
+                [['role' => 'user', 'content' => "Summarize this conversation:\n\n" . $serialized]],
+                [],
+            );
+
+            $summary = trim($response->text ?? '');
+            if ($summary === '') {
+                return $this->asJson(['success' => false, 'error' => 'AI returned an empty summary.']);
+            }
+        } catch (\Throwable $e) {
+            Logger::error('Compact conversation failed: ' . $e->getMessage());
+
+            return $this->asJson(['success' => false, 'error' => 'Failed to generate summary.']);
+        }
+
+        $conversation->replaceMessages([
+            Message::fromArray(['role' => MessageRole::Assistant->value, 'content' => $summary]),
+        ]);
+
+        try {
+            CoPilot::getInstance()->conversationService->save($conversation);
+        } catch (\Throwable $e) {
+            Logger::error('Failed to save compacted conversation: ' . $e->getMessage());
+
+            return $this->asJson(['success' => false, 'error' => 'Failed to save compacted conversation.']);
+        }
+
+        return $this->asJson([
+            'success' => true,
+            'summary' => $summary,
+            'conversationId' => $conversation->id,
+        ]);
     }
 
     private function generateTitle(string $userMessage): string

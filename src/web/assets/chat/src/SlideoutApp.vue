@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { apiPost } from './composables/useCraftApi';
 import { useDebugExport } from './composables/useDebugExport';
+import { useCommandHandler } from './composables/useCommandHandler';
 import type { ConversationSummary, UIMessage } from './types';
 import ChatPanel from './components/ChatPanel.vue';
 
@@ -14,6 +15,15 @@ const dropdownWrap = ref<HTMLElement | null>(null);
 const { isExporting, exportDebug } = useDebugExport();
 const conversations = ref<ConversationSummary[]>([]);
 const activeConversationId = ref<number | null>(null);
+const { handleCommand } = useCommandHandler({
+  activeConversationId,
+  onNewChat: () => newChat(),
+  onCompact: (summary) => {
+    chatPanel.value?.setMessages([
+      { role: 'assistant', content: summary, toolCalls: null, inputTokens: 0, outputTokens: 0 },
+    ]);
+  },
+});
 const showDropdown = ref(false);
 const historyLoaded = ref(false);
 
@@ -174,6 +184,7 @@ defineExpose({ loadHistory, focusInput });
       context-type="entry"
       :context-id="contextId"
       @conversation-created="onConversationCreated"
+      @command="handleCommand"
     />
   </div>
 </template>

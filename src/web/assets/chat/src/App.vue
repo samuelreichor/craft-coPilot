@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import { useModels } from './composables/useModels';
 import { useConversations } from './composables/useConversations';
 import { useDebugExport } from './composables/useDebugExport';
+import { useCommandHandler } from './composables/useCommandHandler';
 import ConversationSidebar from './components/ConversationSidebar.vue';
 import HeaderActions from './components/HeaderActions.vue';
 import ChatPanel from './components/ChatPanel.vue';
@@ -22,6 +23,15 @@ const {
 
 const chatPanel = ref<InstanceType<typeof ChatPanel> | null>(null);
 const { isExporting, exportDebug } = useDebugExport();
+const { handleCommand } = useCommandHandler({
+  activeConversationId,
+  onNewChat: () => newChat(),
+  onCompact: (summary) => {
+    chatPanel.value?.setMessages([
+      { role: 'assistant', content: summary, toolCalls: null, inputTokens: 0, outputTokens: 0 },
+    ]);
+  },
+});
 
 function updateUrl(conversationId: number | null) {
   const path = conversationId ? `co-pilot/${conversationId}` : 'co-pilot';
@@ -110,5 +120,6 @@ onMounted(() => {
     @conversation-created="onConversationCreated"
     @update:model="currentModel = $event"
     @update:execution-mode="executionMode = $event"
+    @command="handleCommand"
   />
 </template>

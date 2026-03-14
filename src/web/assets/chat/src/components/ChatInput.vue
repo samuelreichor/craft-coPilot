@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue';
-import type { Attachment } from '../types';
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import type { Attachment, SlashCommand } from '../types';
 import {
   ALLOWED_FILE_EXTENSIONS,
   isFileAllowed,
   getMaxFileSize,
 } from '../utils/attachments';
+import { useSlashCommands } from '../composables/useSlashCommands';
 import AttachmentPill from './AttachmentPill.vue';
 
 const props = defineProps<{
@@ -19,12 +20,13 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  send: [text: string];
+  send: [text: string, attachments?: Attachment[]];
   cancel: [];
   'add-attachment': [attachment: Attachment];
   'remove-attachment': [index: number];
   'update:currentModel': [value: string];
   'update:executionMode': [value: string];
+  command: [name: string];
 }>();
 
 const text = ref('');
@@ -32,8 +34,152 @@ const showMenu = ref(false);
 const textarea = ref<HTMLTextAreaElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const addWrap = ref<HTMLElement | null>(null);
+const commandMenu = ref<HTMLElement | null>(null);
+
+const slash = useSlashCommands();
+
+// Param collection state
+const pendingCommand = ref<SlashCommand | null>(null);
+
+let paramFileCallback: ((file: File) => void) | null = null;
+
+watch(text, (value) => {
+  if (pendingCommand.value) return;
+  if (value.startsWith('/')) {
+    slash.open(value.slice(1));
+  } else if (slash.isOpen.value) {
+    slash.close();
+  }
+});
+
+function selectCommand(cmd: SlashCommand) {
+  text.value = '';
+  slash.close();
+
+  if (cmd.param) {
+    pendingCommand.value = cmd;
+    collectParam(cmd);
+    return;
+  }
+
+  executeCommand(cmd);
+  nextTick(() => {
+    if (textarea.value) autoGrow({ target: textarea.value } as unknown as Event);
+  });
+}
+
+function collectParam(cmd: SlashCommand) {
+  const param = cmd.param!;
+
+  if (param.type === 'entry') {
+    Craft.createElementSelectorModal('craft\\elements\\Entry', {
+      multiSelect: false,
+      onSelect: (elements) => {
+        if (elements.length) {
+          finishWithAttachment(cmd, { type: 'entry', id: elements[0].id, label: elements[0].label });
+        } else {
+          cancelParam();
+        }
+      },
+    });
+  } else if (param.type === 'asset') {
+    Craft.createElementSelectorModal('craft\\elements\\Asset', {
+      multiSelect: false,
+      onSelect: (elements) => {
+        if (elements.length) {
+          finishWithAttachment(cmd, { type: 'asset', id: elements[0].id, label: elements[0].label });
+        } else {
+          cancelParam();
+        }
+      },
+    });
+  } else if (param.type === 'file') {
+    if (fileInput.value) {
+      paramFileCallback = (file: File) => {
+        finishWithAttachment(cmd, { type: 'file', file, label: file.name });
+      };
+      fileInput.value.value = '';
+      fileInput.value.click();
+    }
+  }
+  // 'text' is handled inline via the template
+}
+
+function finishWithAttachment(cmd: SlashCommand, att: Attachment) {
+  pendingCommand.value = null;
+  executeCommand(cmd, [att]);
+}
+
+function submitTextParam() {
+  const cmd = pendingCommand.value;
+  if (!cmd) return;
+
+  const val = text.value.trim();
+  if (!val) return;
+
+  pendingCommand.value = null;
+  text.value = '';
+  executeCommand(cmd, undefined, val);
+}
+
+function cancelParam() {
+  pendingCommand.value = null;
+  text.value = '';
+}
+
+function executeCommand(cmd: SlashCommand, atts?: Attachment[], textParam?: string) {
+  if (cmd.prompt) {
+    let prompt = cmd.prompt;
+    if (textParam) {
+      prompt = prompt + '\n' + textParam;
+    }
+    emit('send', prompt, atts);
+  } else {
+    emit('command', cmd.name);
+  }
+}
 
 function handleKeydown(e: KeyboardEvent) {
+  // While collecting a text param, Enter submits the value
+  if (pendingCommand.value && pendingCommand.value.param?.type === 'text') {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelParam();
+      return;
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submitTextParam();
+      return;
+    }
+    return;
+  }
+
+  if (slash.isOpen.value && slash.filteredCommands.value.length > 0) {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      slash.moveUp();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      slash.moveDown();
+      return;
+    }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      const cmd = slash.getSelected();
+      if (cmd) selectCommand(cmd);
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      slash.close();
+      text.value = '';
+      return;
+    }
+  }
+
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     submit();
@@ -41,10 +187,24 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 function submit() {
+  if (props.isLoading) return;
   const msg = text.value.trim();
   if (!msg) return;
+
+  // If it's an exact command match, execute it
+  if (msg.startsWith('/')) {
+    const cmd = slash.filteredCommands.value.find(
+      (c) => `/${c.name}` === msg,
+    );
+    if (cmd) {
+      selectCommand(cmd);
+      return;
+    }
+  }
+
   emit('send', msg);
   text.value = '';
+  slash.close();
   nextTick(() => {
     if (textarea.value) autoGrow({ target: textarea.value } as unknown as Event);
   });
@@ -115,6 +275,12 @@ function handleFileSelect(e: Event) {
     return;
   }
 
+  if (paramFileCallback) {
+    paramFileCallback(file);
+    paramFileCallback = null;
+    return;
+  }
+
   emit('add-attachment', {
     type: 'file',
     file,
@@ -145,6 +311,39 @@ defineExpose({ focus });
 
 <template>
   <div class="co-pilot-input">
+    <div
+      v-if="slash.isOpen.value && slash.filteredCommands.value.length > 0"
+      ref="commandMenu"
+      class="co-pilot-input__command-menu"
+    >
+      <button
+        v-for="(cmd, i) in slash.filteredCommands.value"
+        :key="cmd.name"
+        type="button"
+        class="co-pilot-input__command-item"
+        :class="{ 'is-selected': i === slash.selectedIndex.value }"
+        @click="selectCommand(cmd)"
+        @mouseenter="slash.selectedIndex.value = i"
+      >
+        <span class="co-pilot-input__command-name">/{{ cmd.name }}</span>
+        <span class="co-pilot-input__command-desc">{{ cmd.description }}</span>
+      </button>
+    </div>
+    <div
+      v-if="pendingCommand?.param?.type === 'text'"
+      class="co-pilot-input__param-bar"
+    >
+      <span class="co-pilot-input__param-label">
+        /{{ pendingCommand.name }} — {{ pendingCommand.param.label }}
+      </span>
+      <button
+        type="button"
+        class="co-pilot-input__param-cancel btn small"
+        @click="cancelParam"
+      >
+        Cancel
+      </button>
+    </div>
     <div v-if="attachments.length > 0" class="co-pilot-input__attachments">
       <AttachmentPill
         v-for="(att, i) in attachments"
@@ -157,9 +356,8 @@ defineExpose({ focus });
       ref="textarea"
       class="co-pilot-input__textarea"
       v-model="text"
-      :placeholder="compact ? 'Ask about this entry...' : 'Ask CoPilot...'"
+      :placeholder="pendingCommand?.param?.type === 'text' ? pendingCommand.param.label + '...' : (compact ? 'Ask about this entry...' : 'Ask CoPilot...')"
       rows="1"
-      :disabled="isLoading"
       @keydown="handleKeydown"
       @input="autoGrow"
     />

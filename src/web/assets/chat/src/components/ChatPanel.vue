@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import type { ChatPanelProps, UIMessage } from '../types';
+import type { Attachment, ChatPanelProps, UIMessage } from '../types';
 import { useChat } from '../composables/useChat';
 import MessageList from './MessageList.vue';
 import ChatInput from './ChatInput.vue';
@@ -26,6 +26,7 @@ const emit = defineEmits<{
   'conversation-created': [id: number];
   'update:model': [value: string];
   'update:executionMode': [value: string];
+  command: [name: string];
 }>();
 
 const chatInput = ref<InstanceType<typeof ChatInput> | null>(null);
@@ -39,7 +40,12 @@ const chat = useChat({
   },
 });
 
-function handleSend(text: string) {
+function handleSend(text: string, extraAttachments?: Attachment[]) {
+  if (extraAttachments) {
+    for (const att of extraAttachments) {
+      chat.addAttachment(att);
+    }
+  }
   chat.sendMessage(text, props.model || undefined, props.executionMode || undefined, props.provider || undefined);
 }
 
@@ -58,6 +64,7 @@ function clearChat() {
 function focusInput() {
   setTimeout(() => chatInput.value?.focus(), 100);
 }
+
 
 defineExpose({
   messages: chat.messages,
@@ -91,12 +98,13 @@ defineExpose({
       :models="models"
       :current-model="model"
       :execution-mode="executionMode"
-      @send="handleSend"
+      @send="(text, atts) => handleSend(text, atts)"
       @cancel="chat.cancel()"
       @add-attachment="chat.addAttachment($event)"
       @remove-attachment="chat.removeAttachment($event)"
       @update:current-model="$emit('update:model', $event)"
       @update:execution-mode="$emit('update:executionMode', $event)"
+      @command="$emit('command', $event)"
     />
   </div>
 </template>

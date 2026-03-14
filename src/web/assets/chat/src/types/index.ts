@@ -105,6 +105,18 @@ export interface ProviderInfo {
   defaultModel: string | null;
 }
 
+export interface CommandParam {
+  type: 'entry' | 'asset' | 'file' | 'text';
+  label: string;
+}
+
+export interface SlashCommand {
+  name: string;
+  description: string;
+  prompt?: string;
+  param?: CommandParam;
+}
+
 export interface ModelsResponse {
   provider: string;
   providerName: string;

@@ -20,6 +20,7 @@ use samuelreichor\coPilot\models\Settings;
 use samuelreichor\coPilot\services\AgentService;
 use samuelreichor\coPilot\services\AuditService;
 use samuelreichor\coPilot\services\BrandVoiceService;
+use samuelreichor\coPilot\services\CommandService;
 use samuelreichor\coPilot\services\ContextService;
 use samuelreichor\coPilot\services\ConversationService;
 use samuelreichor\coPilot\services\FieldNormalizer;
@@ -40,6 +41,7 @@ use yii\log\FileTarget;
  * @property-read AgentService $agentService
  * @property-read AuditService $auditService
  * @property-read BrandVoiceService $brandVoiceService
+ * @property-read CommandService $commandService
  * @property-read ContextService $contextService
  * @property-read ConversationService $conversationService
  * @property-read FieldNormalizer $fieldNormalizer
@@ -65,6 +67,7 @@ class CoPilot extends Plugin
                 'agentService' => AgentService::class,
                 'auditService' => AuditService::class,
                 'brandVoiceService' => BrandVoiceService::class,
+                'commandService' => CommandService::class,
                 'contextService' => ContextService::class,
                 'conversationService' => ConversationService::class,
                 'fieldNormalizer' => FieldNormalizer::class,
