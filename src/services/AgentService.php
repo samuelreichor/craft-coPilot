@@ -664,7 +664,7 @@ class AgentService extends Component
      */
     private function truncateToolResult(array $result): array
     {
-        $encoded = json_encode($result);
+        $encoded = json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         if ($encoded === false || strlen($encoded) <= self::MAX_TOOL_RESULT_LENGTH) {
             return $result;
         }

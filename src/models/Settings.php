@@ -66,7 +66,7 @@ class Settings extends Model
     public int $maxAgentIterations = 20;
     public int $defaultSerializationDepth = 3;
     public int $maxSerializationDepth = 4;
-    public int $maxContextTokens = 32000;
+    public int $maxContextTokens = 100000;
     public int $defaultSearchLimit = 20;
 
     // Element persistence behavior

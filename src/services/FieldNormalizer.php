@@ -21,6 +21,7 @@ class FieldNormalizer extends Component
     private ?string $currentFieldHandle = null;
     public function normalize(string $fieldHandle, mixed $value, ?Entry $entry = null): mixed
     {
+        $value = $this->unescapeJsonSlashes($value);
         $value = $this->stripSerializationMarkers($value);
 
         $field = $this->resolveField($fieldHandle, $entry);
@@ -60,6 +61,24 @@ class FieldNormalizer extends Component
 
         foreach ($value as $key => $item) {
             $value[$key] = $this->stripSerializationMarkers($item);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Fixes escaped JSON slashes that AI models sometimes produce in HTML content (e.g. <\/p> → </p>).
+     */
+    private function unescapeJsonSlashes(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return str_replace('\\/', '/', $value);
+        }
+
+        if (is_array($value)) {
+            foreach ($value as $key => $item) {
+                $value[$key] = $this->unescapeJsonSlashes($item);
+            }
         }
 
         return $value;

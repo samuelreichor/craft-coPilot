@@ -88,7 +88,7 @@ class SystemPromptBuilder extends Component
                 $sections[] = "## Current Context (Entry ID: {$contextEntry->id})\n"
                     . "The user is viewing this entry. Use this data directly "
                     . "— only call readEntry if you need refreshed data.\n"
-                    . json_encode($serialized);
+                    . json_encode($serialized, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             }
         }
 
