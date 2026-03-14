@@ -33,21 +33,22 @@ class AnthropicProvider implements ProviderInterface
         $payload = [
             'model' => $model,
             'max_tokens' => 4096,
-            'system' => $systemPrompt,
+            'system' => $this->formatSystemPrompt($systemPrompt),
             'messages' => $this->formatMessages($messages),
         ];
 
         $formattedTools = ToolFormatter::forAnthropic($tools);
-        if (!empty($formattedTools)) {
-            $payload['tools'] = $formattedTools;
-        }
-
         if ($settings->webSearchEnabled) {
-            $payload['tools'][] = [
+            $formattedTools[] = [
                 'type' => 'web_search_20250305',
                 'name' => 'web_search',
                 'max_uses' => 3,
             ];
+        }
+
+        if (!empty($formattedTools)) {
+            $this->applyCacheControl($formattedTools);
+            $payload['tools'] = $formattedTools;
         }
 
         Logger::info("Anthropic API request: model={$model}");
@@ -75,22 +76,23 @@ class AnthropicProvider implements ProviderInterface
         $payload = [
             'model' => $model,
             'max_tokens' => 4096,
-            'system' => $systemPrompt,
+            'system' => $this->formatSystemPrompt($systemPrompt),
             'messages' => $this->formatMessages($messages),
             'stream' => true,
         ];
 
         $formattedTools = ToolFormatter::forAnthropic($tools);
-        if (!empty($formattedTools)) {
-            $payload['tools'] = $formattedTools;
-        }
-
         if ($settings->webSearchEnabled) {
-            $payload['tools'][] = [
+            $formattedTools[] = [
                 'type' => 'web_search_20250305',
                 'name' => 'web_search',
                 'max_uses' => 3,
             ];
+        }
+
+        if (!empty($formattedTools)) {
+            $this->applyCacheControl($formattedTools);
+            $payload['tools'] = $formattedTools;
         }
 
         Logger::info("Anthropic API stream request: model={$model}");
@@ -142,6 +144,37 @@ class AnthropicProvider implements ProviderInterface
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    /**
+     * Formats the system prompt as an array of content blocks with cache_control.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function formatSystemPrompt(string $systemPrompt): array
+    {
+        return [
+            [
+                'type' => 'text',
+                'text' => $systemPrompt,
+                'cache_control' => ['type' => 'ephemeral'],
+            ],
+        ];
+    }
+
+    /**
+     * Adds cache_control to the last element of an array (tools or content blocks).
+     *
+     * @param array<int, array<string, mixed>> &$items
+     */
+    private function applyCacheControl(array &$items): void
+    {
+        if (empty($items)) {
+            return;
+        }
+
+        $lastIndex = array_key_last($items);
+        $items[$lastIndex]['cache_control'] = ['type' => 'ephemeral'];
     }
 
     /**
@@ -211,7 +244,47 @@ class AnthropicProvider implements ProviderInterface
             ];
         }
 
+        // Add cache breakpoint on the last user message so the conversation
+        // history up to that point is cached during agent tool-use loops.
+        $this->addMessageCacheBreakpoint($formatted);
+
         return $formatted;
+    }
+
+    /**
+     * Adds cache_control to the last user-role message in the formatted array.
+     * For multi-turn agent loops this caches everything up to the latest turn.
+     *
+     * @param array<int, array<string, mixed>> &$formatted
+     */
+    private function addMessageCacheBreakpoint(array &$formatted): void
+    {
+        // Walk backwards to find the last user message
+        for ($i = count($formatted) - 1; $i >= 0; $i--) {
+            if (($formatted[$i]['role'] ?? '') !== 'user') {
+                continue;
+            }
+
+            $content = $formatted[$i]['content'];
+
+            // Already an array of content blocks (e.g. tool_result) — mark last block
+            if (is_array($content)) {
+                $lastKey = array_key_last($content);
+                $content[$lastKey]['cache_control'] = ['type' => 'ephemeral'];
+                $formatted[$i]['content'] = $content;
+            } else {
+                // String content — convert to content block array
+                $formatted[$i]['content'] = [
+                    [
+                        'type' => 'text',
+                        'text' => $content,
+                        'cache_control' => ['type' => 'ephemeral'],
+                    ],
+                ];
+            }
+
+            break;
+        }
     }
 
     private function sendRequest(string $apiKey, array $payload): AIResponse
@@ -244,8 +317,11 @@ class AnthropicProvider implements ProviderInterface
      */
     private function parseResponse(array $data): AIResponse
     {
-        $inputTokens = $data['usage']['input_tokens'] ?? 0;
-        $outputTokens = $data['usage']['output_tokens'] ?? 0;
+        $usage = $data['usage'] ?? [];
+        $inputTokens = $usage['input_tokens'] ?? 0;
+        $outputTokens = $usage['output_tokens'] ?? 0;
+        $cacheRead = $usage['cache_read_input_tokens'] ?? 0;
+        $cacheCreation = $usage['cache_creation_input_tokens'] ?? 0;
 
         $content = $data['content'] ?? [];
         $textParts = [];
@@ -269,7 +345,7 @@ class AnthropicProvider implements ProviderInterface
         $type = !empty($toolCalls) ? 'tool_call' : 'text';
         $stopReason = $data['stop_reason'] ?? 'unknown';
 
-        Logger::info("Anthropic API response: type={$type}, stop_reason={$stopReason}, inputTokens={$inputTokens}, outputTokens={$outputTokens}");
+        Logger::info("Anthropic API response: type={$type}, stop_reason={$stopReason}, inputTokens={$inputTokens}, outputTokens={$outputTokens}, cacheRead={$cacheRead}, cacheCreation={$cacheCreation}");
 
         if ($text === null && empty($toolCalls)) {
             Logger::warning('Anthropic API returned empty response: stop_reason=' . $stopReason
