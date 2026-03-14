@@ -165,7 +165,7 @@ class AgentService extends Component
 
                     $messages[] = [
                         'role' => MessageRole::Tool->value,
-                        'content' => $this->truncateToolResult($result),
+                        'content' => $result,
                         'toolCallId' => $toolCall['id'],
                         'toolName' => $toolCall['name'],
                         'isError' => isset($result['error']),
@@ -354,7 +354,7 @@ class AgentService extends Component
 
                 $messages[] = [
                     'role' => MessageRole::Tool->value,
-                    'content' => $this->truncateToolResult($result),
+                    'content' => $result,
                     'toolCallId' => $toolCall['id'],
                     'toolName' => $toolCall['name'],
                     'isError' => !$success,
@@ -691,42 +691,5 @@ class AgentService extends Component
         }
 
         return null;
-    }
-
-    private const MAX_TOOL_RESULT_LENGTH = 16000;
-
-    /**
-     * Truncates large tool results to prevent input token explosion across iterations.
-     * Each iteration re-sends the entire message history, so large tool results compound fast.
-     *
-     * @param array<string, mixed> $result
-     * @return array<string, mixed>
-     */
-    private function truncateToolResult(array $result): array
-    {
-        $encoded = json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        if ($encoded === false || strlen($encoded) <= self::MAX_TOOL_RESULT_LENGTH) {
-            return $result;
-        }
-
-        Logger::warning('Tool result truncated from ' . strlen($encoded) . ' to ' . self::MAX_TOOL_RESULT_LENGTH . ' chars — data may be incomplete');
-
-        // Truncate the JSON string and decode back to preserve structure
-        $truncated = mb_substr($encoded, 0, self::MAX_TOOL_RESULT_LENGTH);
-
-        // Try to decode; if it fails (truncated mid-JSON), wrap as string
-        $decoded = json_decode($truncated, true);
-        if ($decoded !== null) {
-            $decoded['_truncated'] = true;
-            $decoded['_truncatedNote'] = 'Result was truncated. Call the tool with more specific parameters to get complete data.';
-
-            return $decoded;
-        }
-
-        return [
-            '_truncated' => true,
-            '_truncatedNote' => 'Result was truncated. Call the tool with more specific parameters to get complete data.',
-            'summary' => mb_substr($truncated, 0, self::MAX_TOOL_RESULT_LENGTH),
-        ];
     }
 }
