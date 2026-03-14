@@ -7,6 +7,7 @@ use craft\helpers\Cp;
 use craft\web\Controller;
 use samuelreichor\coPilot\constants\Constants;
 use samuelreichor\coPilot\CoPilot;
+use yii\web\Cookie;
 use yii\web\Response;
 
 class SettingsController extends Controller
@@ -59,6 +60,18 @@ class SettingsController extends Controller
         }
 
         $plugin->schemaService->invalidateCache();
+
+        // Clear chat cookies so the new defaults are used on next visit
+        $cookies = Craft::$app->getResponse()->getCookies();
+        foreach ([Constants::COOKIE_PROVIDER, Constants::COOKIE_MODEL] as $name) {
+            $cookies->add(new Cookie([
+                'name' => $name,
+                'value' => '',
+                'expire' => 1,
+                'path' => '/',
+            ]));
+        }
+
         Craft::$app->getSession()->setNotice('Plugin settings saved.');
 
         return $this->redirectToPostedUrl();

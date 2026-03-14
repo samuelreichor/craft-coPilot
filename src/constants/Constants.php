@@ -27,6 +27,10 @@ final class Constants
     // Permission Keys — Audit Log
     public const PERMISSION_VIEW_AUDIT_LOG = 'copilot-viewAuditLog';
 
+    // Cookie Names
+    public const COOKIE_PROVIDER = 'co_pilot_provider';
+    public const COOKIE_MODEL = 'co_pilot_model';
+
     // Schema — Field classes excluded from schema output
     /** @var array<int, string> */
     public const EXCLUDED_FIELD_CLASSES = [
