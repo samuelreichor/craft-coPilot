@@ -122,7 +122,7 @@ class CoPilot extends Plugin
             return null;
         }
 
-        $item['label'] = 'CoPilot';
+        $item['label'] = $this->getSettings()->pluginName;
 
         if (count($pages) === 1) {
             $firstPage = reset($pages);
@@ -199,7 +199,7 @@ class CoPilot extends Plugin
             UserPermissions::EVENT_REGISTER_PERMISSIONS,
             function(RegisterUserPermissionsEvent $event) {
                 $event->permissions[] = [
-                    'heading' => 'CoPilot',
+                    'heading' => $this->getSettings()->pluginName,
                     'permissions' => [
                         Constants::PERMISSION_VIEW_CHAT => [
                             'label' => 'View Chat',

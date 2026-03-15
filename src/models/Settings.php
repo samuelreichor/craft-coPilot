@@ -73,13 +73,17 @@ class Settings extends Model
     public string $elementUpdateBehavior = 'provisionalDraft';
     public string $elementCreationBehavior = 'draft';
 
+    // Appearance
+    public string $pluginName = 'CoPilot';
+
     // Data retention
     public int $auditLogRetentionDays = 30;
 
     public function defineRules(): array
     {
         return [
-            [['defaultProvider', 'openaiModel', 'anthropicModel', 'geminiModel'], 'required'],
+            [['defaultProvider', 'openaiModel', 'anthropicModel', 'geminiModel', 'pluginName'], 'required'],
+            ['pluginName', 'string', 'max' => 50],
             ['defaultProvider', 'in', 'range' => array_column(Provider::cases(), 'value')],
             ['maxAgentIterations', 'integer', 'min' => 1, 'max' => 50],
             ['defaultSerializationDepth', 'integer', 'min' => 1, 'max' => 10],

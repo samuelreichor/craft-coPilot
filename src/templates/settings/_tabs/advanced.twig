@@ -80,6 +80,21 @@
 
     <hr>
 
+    <h3>Appearance</h3>
+
+    {{ forms.textField({
+        label: 'Plugin Name',
+        instructions: 'Override the name shown in the control panel sidebar.',
+        id: 'pluginName',
+        name: 'pluginName',
+        value: settings.pluginName,
+        disabled: config.pluginName is defined,
+        warning: config.pluginName is defined ? configWarning('pluginName'),
+        errors: settings.getErrors('pluginName'),
+    }) }}
+
+    <hr>
+
     <h3>Data Retention</h3>
 
     {{ forms.textField({
