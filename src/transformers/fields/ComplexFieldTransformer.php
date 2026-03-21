@@ -506,18 +506,22 @@ class ComplexFieldTransformer implements FieldTransformerInterface
             return $value;
         }
 
+        $blocks = array_values(array_filter($value, 'is_array'));
+
+        // Try to match blocks without _blockId to existing blocks by type+position.
+        // This is critical for cross-site updates where the agent sends translated
+        // content without preserving block IDs.
+        if ($entry !== null && !$replaceMode) {
+            $blocks = $this->matchBlocksByPosition($blocks, $entry, $fieldHandle);
+        }
+
         $newEntries = [];
         $existingEntries = [];
         $newSortOrder = [];
         $existingUpdateIds = [];
         $newIndex = 1;
 
-        foreach (array_values($value) as $block) {
-            if (!is_array($block)) {
-                continue;
-            }
-
-            // Blocks with _blockId reference existing entries — update them in place
+        foreach ($blocks as $block) {
             $blockId = $block['_blockId'] ?? null;
             $block = $this->normalizeMatrixBlock($block, $matrixField, $entry);
 
@@ -672,6 +676,92 @@ class ComplexFieldTransformer implements FieldTransformerInterface
         }
 
         return $fields;
+    }
+
+    /**
+     * Matches incoming blocks without _blockId to existing blocks by type and position.
+     *
+     * When the agent reads an entry on one site and sends translated content to another,
+     * block IDs are often omitted. This method maps unidentified blocks to their existing
+     * counterparts so they update in place instead of being duplicated.
+     *
+     * @param array<int, array<string, mixed>> $blocks
+     * @return array<int, array<string, mixed>>
+     */
+    private function matchBlocksByPosition(array $blocks, Entry $entry, string $fieldHandle): array
+    {
+        // Skip if all blocks already have _blockId
+        $hasUnidentified = false;
+        foreach ($blocks as $block) {
+            if (!isset($block['_blockId'])) {
+                $hasUnidentified = true;
+                break;
+            }
+        }
+
+        if (!$hasUnidentified) {
+            return $blocks;
+        }
+
+        try {
+            $existingBlocks = $entry->getFieldValue($fieldHandle)->all();
+        } catch (\Throwable) {
+            return $blocks;
+        }
+
+        if ($existingBlocks === []) {
+            return $blocks;
+        }
+
+        // Build a list of existing blocks with their type and ID
+        $existingByPosition = [];
+        foreach ($existingBlocks as $existing) {
+            $existingByPosition[] = [
+                'id' => $existing->id,
+                'type' => $existing->getType()->handle,
+            ];
+        }
+
+        $matched = [];
+        $existingIndex = 0;
+
+        foreach ($blocks as $block) {
+            // Block already identified — keep as-is
+            if (isset($block['_blockId'])) {
+                $matched[] = $block;
+                continue;
+            }
+
+            $blockType = $block['_blockType'] ?? $block['type'] ?? null;
+
+            // Try to match to the next existing block at the same position with matching type
+            if ($existingIndex < count($existingByPosition)) {
+                $candidate = $existingByPosition[$existingIndex];
+
+                if ($blockType === null || $candidate['type'] === $blockType) {
+                    $block['_blockId'] = $candidate['id'];
+                    $existingIndex++;
+                    $matched[] = $block;
+                    continue;
+                }
+            }
+
+            // No positional match — scan remaining existing blocks for a type match
+            for ($i = $existingIndex; $i < count($existingByPosition); $i++) {
+                if ($existingByPosition[$i]['type'] === $blockType) {
+                    $block['_blockId'] = $existingByPosition[$i]['id'];
+                    // Remove matched block so it's not matched again
+                    array_splice($existingByPosition, $i, 1);
+                    $matched[] = $block;
+                    continue 2;
+                }
+            }
+
+            // No match found — treat as genuinely new
+            $matched[] = $block;
+        }
+
+        return $matched;
     }
 
     /**

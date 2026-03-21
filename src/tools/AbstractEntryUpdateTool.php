@@ -529,19 +529,18 @@ abstract class AbstractEntryUpdateTool implements ToolInterface
     }
 
     /**
-     * Creates an entry's site version based on the section's propagation method.
+     * Creates an entry's site version using Craft's built-in propagation.
      *
-     * For non-custom propagation methods (all, none, siteGroup, language),
-     * Craft's built-in propagateElement() handles everything: it clones the
-     * source entry, copies field values based on each field's translation key,
-     * and saves the new site version.
+     * For Custom propagation, setEnabledForSite() makes the target site appear
+     * in getSupportedSites() with propagate=true, so propagateElement() works.
      *
-     * For custom propagation, getSupportedSites() includes the target site but
-     * marks it with propagate=false (because the entry doesn't exist there yet
-     * and hasn't been explicitly assigned to it). We clone the source entry
-     * ourselves and save it directly for the target site instead.
+     * For All, propagateElement() works directly (all sites are supported).
      *
-     * @see \craft\elements\Entry::getSupportedSites() — Custom case, line ~1247
+     * For None/Language/SiteGroup, the target site may not be in
+     * getSupportedSites() at all (e.g. different language). Craft's data model
+     * requires a separate entry per site/language/group in these cases. The
+     * agent must use createEntry instead.
+     *
      * @return Entry|array<string, mixed> The entry or an error response
      */
     private function createSiteVersion(int $entryId, string $siteHandle): Entry|array
@@ -578,12 +577,14 @@ abstract class AbstractEntryUpdateTool implements ToolInterface
             ];
         }
 
+        // For Custom propagation, mark the entry as enabled for the target site
+        // so getSupportedSites() includes it with propagate=true.
+        if ($section->propagationMethod === \craft\enums\PropagationMethod::Custom) {
+            $sourceEntry->setEnabledForSite([$site->id => true]);
+        }
+
         try {
-            if ($section->propagationMethod === \craft\enums\PropagationMethod::Custom) {
-                $this->createCustomSiteVersion($sourceEntry, $site);
-            } else {
-                Craft::$app->getElements()->propagateElement($sourceEntry, $site->id);
-            }
+            Craft::$app->getElements()->propagateElement($sourceEntry, $site->id);
 
             $entry = Entry::find()->id($entryId)->status(null)->drafts(null)->siteId($site->id)->one();
 
@@ -595,30 +596,21 @@ abstract class AbstractEntryUpdateTool implements ToolInterface
             }
 
             return $entry;
+        } catch (\craft\errors\UnsupportedSiteException) {
+            $method = $section->propagationMethod->value;
+
+            return [
+                'error' => "Entry #{$entryId} cannot be propagated to site \"{$siteHandle}\". "
+                    . "Section \"{$section->handle}\" uses \"{$method}\" propagation, "
+                    . "so entries on different sites/languages/groups are independent.",
+                'retryHint' => "Use createEntry with siteHandle \"{$siteHandle}\" and section \"{$section->handle}\" "
+                    . "to create a new translated entry on the target site. Copy the content from entry #{$entryId}.",
+            ];
         } catch (\Throwable $e) {
             return [
                 'error' => "Entry #{$entryId} could not be propagated to site \"{$siteHandle}\": {$e->getMessage()}",
                 'retryHint' => null,
             ];
         }
-    }
-
-    /**
-     * Creates a site version for entries with custom propagation.
-     *
-     * Clones the source entry so the original is never mutated, then saves the
-     * clone for the target site with propagation disabled (to avoid recursion).
-     */
-    private function createCustomSiteVersion(Entry $sourceEntry, \craft\models\Site $site): void
-    {
-        $clone = clone $sourceEntry;
-        $clone->siteId = $site->id;
-        $clone->setEnabledForSite(true);
-        $clone->isNewForSite = true;
-
-        // Copy all field values from the source to the clone
-        $clone->setFieldValues($sourceEntry->getFieldValues());
-
-        Craft::$app->getElements()->saveElement($clone, propagate: false);
     }
 }
