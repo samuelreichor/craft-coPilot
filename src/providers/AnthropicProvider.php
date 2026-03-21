@@ -122,7 +122,7 @@ class AnthropicProvider implements ProviderInterface
 
     public function getTitleModel(): string
     {
-        return 'claude-haiku-4-5-20251001';
+        return 'claude-sonnet-4-6';
     }
 
     public function getName(): string
