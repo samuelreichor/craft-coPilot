@@ -200,22 +200,11 @@ abstract class AbstractEntryUpdateTool implements ToolInterface
 
         $entry = $query->one();
 
-        // Entry not found on target site — try to propagate it there
+        // Entry not found on target site — try to create the site version
         if (!$entry && $siteHandle) {
-            $site = Craft::$app->getSites()->getSiteByHandle($siteHandle);
-            if ($site) {
-                $sourceEntry = Entry::find()->id($entryId)->status(null)->drafts(null)->site('*')->one();
-                if ($sourceEntry) {
-                    try {
-                        Craft::$app->getElements()->propagateElement($sourceEntry, $site->id);
-                        $entry = Entry::find()->id($entryId)->status(null)->drafts(null)->siteId($site->id)->one();
-                    } catch (\Throwable $e) {
-                        return [
-                            'error' => "Entry #{$entryId} could not be propagated to site \"{$siteHandle}\": {$e->getMessage()}",
-                            'retryHint' => null,
-                        ];
-                    }
-                }
+            $entry = $this->createSiteVersion($entryId, $siteHandle);
+            if (is_array($entry)) {
+                return $entry; // error response
             }
         }
 
@@ -537,5 +526,99 @@ abstract class AbstractEntryUpdateTool implements ToolInterface
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Creates an entry's site version based on the section's propagation method.
+     *
+     * For non-custom propagation methods (all, none, siteGroup, language),
+     * Craft's built-in propagateElement() handles everything: it clones the
+     * source entry, copies field values based on each field's translation key,
+     * and saves the new site version.
+     *
+     * For custom propagation, getSupportedSites() includes the target site but
+     * marks it with propagate=false (because the entry doesn't exist there yet
+     * and hasn't been explicitly assigned to it). We clone the source entry
+     * ourselves and save it directly for the target site instead.
+     *
+     * @see \craft\elements\Entry::getSupportedSites() — Custom case, line ~1247
+     * @return Entry|array<string, mixed> The entry or an error response
+     */
+    private function createSiteVersion(int $entryId, string $siteHandle): Entry|array
+    {
+        $site = Craft::$app->getSites()->getSiteByHandle($siteHandle);
+        if (!$site) {
+            return [
+                'error' => "Site \"{$siteHandle}\" not found.",
+                'retryHint' => 'Call listSites to get valid site handles.',
+            ];
+        }
+
+        $sourceEntry = Entry::find()->id($entryId)->status(null)->drafts(null)->site('*')->one();
+        if (!$sourceEntry) {
+            return [
+                'error' => "Entry #{$entryId} not found.",
+                'retryHint' => null,
+            ];
+        }
+
+        $section = $sourceEntry->getSection();
+        if (!$section) {
+            return [
+                'error' => "Entry #{$entryId} has no section.",
+                'retryHint' => null,
+            ];
+        }
+
+        $siteSettings = $section->getSiteSettings();
+        if (!isset($siteSettings[$site->id])) {
+            return [
+                'error' => "Section \"{$section->handle}\" is not enabled for site \"{$siteHandle}\".",
+                'retryHint' => null,
+            ];
+        }
+
+        try {
+            if ($section->propagationMethod === \craft\enums\PropagationMethod::Custom) {
+                $this->createCustomSiteVersion($sourceEntry, $site);
+            } else {
+                Craft::$app->getElements()->propagateElement($sourceEntry, $site->id);
+            }
+
+            $entry = Entry::find()->id($entryId)->status(null)->drafts(null)->siteId($site->id)->one();
+
+            if (!$entry) {
+                return [
+                    'error' => "Entry #{$entryId} could not be created on site \"{$siteHandle}\".",
+                    'retryHint' => null,
+                ];
+            }
+
+            return $entry;
+        } catch (\Throwable $e) {
+            return [
+                'error' => "Entry #{$entryId} could not be propagated to site \"{$siteHandle}\": {$e->getMessage()}",
+                'retryHint' => null,
+            ];
+        }
+    }
+
+    /**
+     * Creates a site version for entries with custom propagation.
+     *
+     * Clones the source entry so the original is never mutated, then saves the
+     * clone for the target site with propagation disabled (to avoid recursion).
+     */
+    private function createCustomSiteVersion(Entry $sourceEntry, \craft\models\Site $site): void
+    {
+        $clone = clone $sourceEntry;
+        $clone->siteId = $site->id;
+        $clone->setEnabledForSite(true);
+        $clone->isNewForSite = true;
+
+        // Copy all field values from the source to the clone
+        $clone->setFieldValues($sourceEntry->getFieldValues());
+
+        Craft::$app->getElements()->saveElement($clone, propagate: false);
     }
 }
