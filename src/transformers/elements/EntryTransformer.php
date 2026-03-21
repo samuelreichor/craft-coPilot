@@ -41,9 +41,9 @@ class EntryTransformer implements ElementTransformerInterface
 
         $data = [
             'id' => $element->id,
-            'title' => $element->title ?: $element->getSection()->name,
+            'title' => $element->title ?: $element->getSection()?->name,
             'slug' => $element->slug,
-            'section' => $element->getSection()->handle,
+            'section' => $element->getSection()?->handle,
             'type' => $element->getType()->handle,
             'status' => $element->getStatus(),
             'dateCreated' => $element->dateCreated?->format('c'),

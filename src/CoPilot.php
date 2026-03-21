@@ -312,7 +312,7 @@ class CoPilot extends Plugin
             'window.coPilotConfig = ' . json_encode([
                 'csrfTokenName' => Craft::$app->getConfig()->getGeneral()->csrfTokenName,
                 'csrfTokenValue' => Craft::$app->getRequest()->getCsrfToken(),
-                'actionUrl' => '/actions/co-pilot/chat/send',
+                'actionUrl' => UrlHelper::actionUrl('co-pilot/chat/send'),
             ]),
             View::POS_HEAD,
         );

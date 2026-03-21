@@ -585,7 +585,7 @@ class ChatController extends Controller
         } catch (\Throwable $e) {
             Logger::error('Failed to save conversation: ' . $e->getMessage());
 
-            return null;
+            throw $e;
         }
 
         return $conversation->id;

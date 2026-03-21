@@ -527,10 +527,11 @@ class AgentService extends Component
         int $historyCount,
     ): array {
         $modelProperty = $settings->defaultProvider . 'Model';
+        $defaultModel = property_exists($settings, $modelProperty) ? $settings->$modelProperty : null;
 
         return [
             'systemPrompt' => $systemPrompt,
-            'model' => $model ?? $settings->$modelProperty ?? null,
+            'model' => $model ?? $defaultModel,
             'provider' => $settings->defaultProvider,
             'messages' => array_values(array_slice($messages, $historyCount)),
             'iterations' => $iterations,

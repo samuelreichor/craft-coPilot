@@ -369,7 +369,7 @@ class ComplexFieldTransformer implements FieldTransformerInterface
             'assetId' => 'asset',
             'categoryId' => 'category',
             'email' => 'email',
-            'phone' => null,
+            'phone' => 'tel',
         ];
 
         foreach ($keyMappings as $aiKey => $impliedType) {

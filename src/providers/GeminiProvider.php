@@ -84,7 +84,9 @@ class GeminiProvider implements ProviderInterface
 
         try {
             $response = $client->get(self::API_BASE . 'gemini-2.0-flash', [
-                'query' => ['key' => $key],
+                'headers' => [
+                    'x-goog-api-key' => $key,
+                ],
                 'timeout' => 10,
             ]);
 
@@ -228,9 +230,9 @@ class GeminiProvider implements ProviderInterface
 
         try {
             $response = $client->post($url, [
-                'query' => ['key' => $apiKey],
                 'headers' => [
                     'Content-Type' => 'application/json',
+                    'x-goog-api-key' => $apiKey,
                 ],
                 'json' => $payload,
                 'timeout' => 120,

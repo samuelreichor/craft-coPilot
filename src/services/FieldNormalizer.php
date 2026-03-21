@@ -37,10 +37,14 @@ class FieldNormalizer extends Component
         }
 
         $this->currentFieldHandle = $fieldHandle;
-        $normalized = $transformer->normalizeValue($field, $value, $entry);
-        $this->currentFieldHandle = null;
 
-        return $normalized ?? $value;
+        try {
+            $normalized = $transformer->normalizeValue($field, $value, $entry);
+
+            return $normalized ?? $value;
+        } finally {
+            $this->currentFieldHandle = null;
+        }
     }
 
     public function getCurrentFieldHandle(): ?string
