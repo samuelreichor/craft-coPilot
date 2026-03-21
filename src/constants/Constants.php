@@ -10,6 +10,7 @@ final class Constants
     public const TABLE_BRAND_VOICE = '{{%copilot_brand_voice}}';
 
     // Cache Keys
+    public const CACHE_TAG = 'copilot';
     public const CACHE_SCHEMA_PREFIX = 'copilot.schema.';
 
     // Permission Keys — Chat

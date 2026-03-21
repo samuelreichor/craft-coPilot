@@ -8,11 +8,13 @@ use craft\base\Model;
 use craft\base\Plugin;
 use craft\elements\Entry;
 use craft\events\DefineHtmlEvent;
+use craft\events\RegisterCacheOptionsEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\helpers\UrlHelper;
 use craft\services\Gc;
 use craft\services\UserPermissions;
+use craft\utilities\ClearCaches;
 use craft\web\UrlManager;
 use craft\web\View;
 use samuelreichor\coPilot\constants\Constants;
@@ -168,6 +170,7 @@ class CoPilot extends Plugin
         $this->registerPermissions();
         $this->registerEntryContextInjection();
         $this->registerGarbageCollection();
+        $this->registerCacheOptions();
     }
 
     private function registerGarbageCollection(): void
@@ -175,6 +178,21 @@ class CoPilot extends Plugin
         Event::on(Gc::class, Gc::EVENT_RUN, function(): void {
             $this->auditService->purgeOldLogs();
         });
+    }
+
+    private function registerCacheOptions(): void
+    {
+        Event::on(
+            ClearCaches::class,
+            ClearCaches::EVENT_REGISTER_CACHE_OPTIONS,
+            function(RegisterCacheOptionsEvent $event): void {
+                $event->options[] = [
+                    'key' => 'copilot-schema',
+                    'label' => 'CoPilot schema caches',
+                    'action' => [$this->schemaService, 'invalidateCache'],
+                ];
+            },
+        );
     }
 
     private function registerCpUrlRules(): void
