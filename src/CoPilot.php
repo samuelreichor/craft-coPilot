@@ -257,7 +257,7 @@ class CoPilot extends Plugin
                 }
 
                 $user = Craft::$app->getUser()->getIdentity();
-                if (!$user || !$user->can(Constants::PERMISSION_VIEW_CHAT)) {
+                if (!$user || !$user->can(Constants::PERMISSION_VIEW_CHAT) || !$user->can(Constants::PERMISSION_CREATE_CHAT)) {
                     return;
                 }
 
@@ -265,9 +265,15 @@ class CoPilot extends Plugin
 
                 $icon = $this->providerService->getActiveProvider()->getIcon();
 
+                $permissions = [
+                    'deleteChat' => $user->can(Constants::PERMISSION_DELETE_CHAT),
+                    'editOtherUsersChats' => $user->can(Constants::PERMISSION_EDIT_OTHER_USERS_CHATS),
+                    'deleteOtherUsersChats' => $user->can(Constants::PERMISSION_DELETE_OTHER_USERS_CHATS),
+                ];
+
                 $event->html .= Craft::$app->getView()->renderTemplate(
                     'co-pilot/_toolbar-trigger',
-                    ['entryId' => $entry->getCanonicalId(), 'siteHandle' => $entry->getSite()->handle, 'icon' => $icon],
+                    ['entryId' => $entry->getCanonicalId(), 'siteHandle' => $entry->getSite()->handle, 'icon' => $icon, 'permissions' => $permissions],
                 );
             },
         );

@@ -1,25 +1,39 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
-import { apiPost } from './composables/useCraftApi';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useModels } from './composables/useModels';
+import { useConversations } from './composables/useConversations';
 import { useDebugExport } from './composables/useDebugExport';
 import { useCommandHandler } from './composables/useCommandHandler';
-import { parseAttachmentsFromContent } from './utils/attachments';
-import type { ConversationSummary, UIMessage } from './types';
+import type { Attachment, UIMessage } from './types';
 import ChatPanel from './components/ChatPanel.vue';
 
 const props = defineProps<{
   contextId: number;
   siteHandle?: string | null;
   executionMode?: string | null;
+  currentUserId?: number | null;
+  canEditOthers?: boolean;
+  canCreateChat?: boolean;
+  canDeleteOwn?: boolean;
+  canDeleteOthers?: boolean;
 }>();
 
 const activeExecutionMode = ref(props.executionMode || 'supervised');
 
+const { models, currentModel, currentProvider, providers, switchProvider } =
+  useModels();
+
+const {
+  conversations,
+  activeConversationId,
+  loadConversation,
+  deleteConversation,
+  refreshConversations,
+} = useConversations([], { contextId: props.contextId });
+
 const chatPanel = ref<InstanceType<typeof ChatPanel> | null>(null);
 const dropdownWrap = ref<HTMLElement | null>(null);
 const { isExporting, exportDebug } = useDebugExport();
-const conversations = ref<ConversationSummary[]>([]);
-const activeConversationId = ref<number | null>(null);
 const { handleCommand } = useCommandHandler({
   activeConversationId,
   onNewChat: () => newChat(),
@@ -30,7 +44,21 @@ const { handleCommand } = useCommandHandler({
   },
 });
 const showDropdown = ref(false);
-const historyLoaded = ref(false);
+
+const isReadonly = computed(() => {
+  if (!activeConversationId.value) {
+    return props.canCreateChat === false;
+  }
+  const conv = conversations.value.find((c) => c.id === activeConversationId.value);
+  if (!conv || conv.userId === props.currentUserId) return false;
+  return !props.canEditOthers;
+});
+
+function canDelete(conv: { userId?: number }): boolean {
+  const isOwn = conv.userId === props.currentUserId;
+  if (isOwn) return props.canDeleteOwn !== false;
+  return props.canDeleteOthers === true;
+}
 
 function handleClickOutside(e: MouseEvent) {
   if (
@@ -42,73 +70,28 @@ function handleClickOutside(e: MouseEvent) {
   }
 }
 
-async function fetchConversations() {
+async function selectConversation(id: number) {
+  showDropdown.value = false;
+  if (id === activeConversationId.value) return;
   try {
-    const data = await apiPost<ConversationSummary[]>(
-      'co-pilot/chat/get-entry-conversations',
-      { contextId: props.contextId },
-    );
-    conversations.value = data || [];
-  } catch {
-    conversations.value = [];
-  }
-}
-
-async function loadConversation(id: number) {
-  try {
-    const data = await apiPost<{
-      id: number | null;
-      messages: Array<{ role: string; content: string }>;
-    }>('co-pilot/chat/load-conversation', { id });
-
-    if (data.id) {
-      activeConversationId.value = data.id;
-      chatPanel.value?.setConversationId(data.id);
-      chatPanel.value?.setMessages(
-        (data.messages || [])
-          .filter((m) => m.role === 'user' || m.role === 'assistant')
-          .map((m) => {
-            const raw =
-              typeof m.content === 'string'
-                ? m.content
-                : JSON.stringify(m.content);
-            if (m.role === 'user') {
-              const parsed = parseAttachmentsFromContent(raw);
-              return {
-                role: 'user' as const,
-                content: parsed.content,
-                attachments: parsed.attachments,
-                toolCalls: null,
-                inputTokens: 0,
-                outputTokens: 0,
-              };
-            }
-            return {
-              role: 'assistant' as const,
-              content: raw,
-              toolCalls: null,
-              inputTokens: 0,
-              outputTokens: 0,
-            };
-          }),
-      );
-    }
+    const msgs = await loadConversation(id);
+    chatPanel.value?.setMessages(msgs);
+    chatPanel.value?.setConversationId(id);
   } catch (err) {
     console.error('Failed to load conversation:', err);
   }
 }
 
-async function loadHistory() {
-  if (historyLoaded.value || !props.contextId) return;
-  historyLoaded.value = true;
-
-  await fetchConversations();
-}
-
-function selectConversation(id: number) {
-  showDropdown.value = false;
-  if (id === activeConversationId.value) return;
-  loadConversation(id);
+async function handleDeleteConversation(id: number) {
+  try {
+    const wasActive = activeConversationId.value === id;
+    await deleteConversation(id);
+    if (wasActive) {
+      chatPanel.value?.clearChat();
+    }
+  } catch (err) {
+    console.error('Failed to delete conversation:', err);
+  }
 }
 
 function newChat() {
@@ -119,7 +102,7 @@ function newChat() {
 
 function onConversationCreated(id: number) {
   activeConversationId.value = id;
-  fetchConversations();
+  refreshConversations();
 }
 
 function focusInput() {
@@ -128,6 +111,10 @@ function focusInput() {
 
 function toggleDropdown() {
   showDropdown.value = !showDropdown.value;
+}
+
+function loadHistory() {
+  refreshConversations();
 }
 
 onMounted(() => {
@@ -175,7 +162,14 @@ defineExpose({ loadHistory, focusInput });
             }"
             @click="selectConversation(conv.id)"
           >
-            {{ conv.title }}
+            <span class="co-pilot-slideout-dropdown__label">{{ conv.title }}</span>
+            <span
+              v-if="canDelete(conv)"
+              class="co-pilot-slideout-dropdown__delete"
+              role="button"
+              title="Delete conversation"
+              @click.stop="handleDeleteConversation(conv.id)"
+            >&times;</span>
           </button>
           <div
             v-if="conversations.length === 0"
@@ -184,6 +178,20 @@ defineExpose({ loadHistory, focusInput });
             No conversations yet
           </div>
         </div>
+      </div>
+      <div v-if="providers.length > 1" class="select">
+        <select
+          :value="currentProvider"
+          @change="switchProvider(($event.target as HTMLSelectElement).value)"
+        >
+          <option
+            v-for="provider in providers"
+            :key="provider.handle"
+            :value="provider.handle"
+          >
+            {{ provider.name }}
+          </option>
+        </select>
       </div>
       <button
         v-if="activeConversationId"
@@ -195,15 +203,27 @@ defineExpose({ loadHistory, focusInput });
       >
         {{ isExporting ? '...' : 'Export Debug' }}
       </button>
-      <button type="button" class="btn submit" @click="newChat">New Chat +</button>
+      <button
+        v-if="canCreateChat !== false"
+        type="button"
+        class="btn submit"
+        @click="newChat"
+      >
+        New Chat +
+      </button>
     </div>
     <ChatPanel
       ref="chatPanel"
       context-type="entry"
       :context-id="contextId"
       :site-handle="siteHandle"
+      :model="currentModel"
+      :models="models"
+      :provider="currentProvider"
       :execution-mode="activeExecutionMode"
+      :readonly="isReadonly"
       @conversation-created="onConversationCreated"
+      @update:model="currentModel = $event"
       @update:execution-mode="activeExecutionMode = $event"
       @command="handleCommand"
     />

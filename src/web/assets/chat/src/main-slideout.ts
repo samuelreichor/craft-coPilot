@@ -23,10 +23,16 @@ import SlideoutApp from './SlideoutApp.vue';
 
       const mountEl = document.getElementById(mountId);
       if (mountEl) {
+        const perms = window.__coPilotPermissions;
         const app = createApp(SlideoutApp, {
           contextId: contextEntryId,
           siteHandle: contextSiteHandle,
           executionMode: window.__coPilotExecutionMode ?? 'supervised',
+          currentUserId: window.__coPilotCurrentUserId ?? null,
+          canEditOthers: perms?.editOtherUsersChats ?? false,
+          canCreateChat: true, // Slideout only renders when createChat permission exists
+          canDeleteOwn: perms?.deleteChat ?? false,
+          canDeleteOthers: perms?.deleteOtherUsersChats ?? false,
         });
         vueInstance = app.mount(mountEl) as InstanceType<typeof SlideoutApp>;
       }

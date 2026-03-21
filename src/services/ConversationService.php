@@ -162,6 +162,24 @@ class ConversationService extends Component
         return array_map(fn(array $row) => $this->hydrateConversation($row), $rows);
     }
 
+    /**
+     * @return Conversation[]
+     */
+    public function getAllForContextAllUsers(string $contextType, int $contextId, int $limit = 20): array
+    {
+        $rows = (new Query())
+            ->from(Constants::TABLE_CONVERSATIONS)
+            ->where([
+                'contextType' => $contextType,
+                'contextId' => $contextId,
+            ])
+            ->orderBy(['dateUpdated' => SORT_DESC])
+            ->limit($limit)
+            ->all();
+
+        return array_map(fn(array $row) => $this->hydrateConversation($row), $rows);
+    }
+
     public function deleteById(int $id): bool
     {
         $affected = Craft::$app->getDb()->createCommand()->delete(

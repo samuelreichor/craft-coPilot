@@ -37,12 +37,19 @@ class ChatController extends Controller
     public function actionIndex(?int $conversationId = null): Response
     {
         $plugin = CoPilot::getInstance();
-        $conversations = $plugin->conversationService->getForCurrentUser(contextType: 'global');
+        $canViewAll = Craft::$app->getUser()->checkPermission(Constants::PERMISSION_VIEW_OTHER_USERS_CHATS);
+        $conversations = $canViewAll
+            ? $plugin->conversationService->getAll(contextType: 'global')
+            : $plugin->conversationService->getForCurrentUser(contextType: 'global');
+
+        $user = Craft::$app->getUser();
+        $currentUserId = $user->getId();
 
         $conversationsData = array_map(fn(Conversation $c) => [
             'id' => $c->id,
             'title' => $c->title,
             'dateUpdated' => $c->dateUpdated,
+            'userId' => $c->userId,
         ], $conversations);
 
         $contextId = $this->request->getQueryParam('entryId');
@@ -57,11 +64,20 @@ class ChatController extends Controller
             }
         }
 
+        $permissions = [
+            'createChat' => $user->checkPermission(Constants::PERMISSION_CREATE_CHAT),
+            'deleteChat' => $user->checkPermission(Constants::PERMISSION_DELETE_CHAT),
+            'deleteOtherUsersChats' => $user->checkPermission(Constants::PERMISSION_DELETE_OTHER_USERS_CHATS),
+            'editOtherUsersChats' => $user->checkPermission(Constants::PERMISSION_EDIT_OTHER_USERS_CHATS),
+        ];
+
         return $this->renderTemplate('co-pilot/chat/index', [
             'conversationsJson' => json_encode($conversationsData),
             'contextId' => $contextId ? (int)$contextId : null,
             'activeConversationId' => $activeConversationId,
             'selectedSite' => Cp::requestedSite(),
+            'currentUserId' => $currentUserId,
+            'permissionsJson' => json_encode($permissions),
         ]);
     }
 
@@ -235,12 +251,18 @@ class ChatController extends Controller
         $this->requirePostRequest();
         $this->requireAcceptsJson();
 
-        $conversations = CoPilot::getInstance()->conversationService->getForCurrentUser(contextType: 'global');
+        $user = Craft::$app->getUser();
+        $canViewAll = $user->checkPermission(Constants::PERMISSION_VIEW_OTHER_USERS_CHATS);
+
+        $conversations = $canViewAll
+            ? CoPilot::getInstance()->conversationService->getAll(contextType: 'global')
+            : CoPilot::getInstance()->conversationService->getForCurrentUser(contextType: 'global');
 
         $data = array_map(fn(Conversation $c) => [
             'id' => $c->id,
             'title' => $c->title,
             'dateUpdated' => $c->dateUpdated,
+            'userId' => $c->userId,
         ], $conversations);
 
         return $this->asJson($data);
@@ -254,22 +276,24 @@ class ChatController extends Controller
         $this->requirePostRequest();
         $this->requireAcceptsJson();
 
-        $contextId = $this->request->getRequiredBodyParam('contextId');
-        $user = Craft::$app->getUser()->getIdentity();
-        if (!$user) {
+        $contextId = (int)$this->request->getRequiredBodyParam('contextId');
+        $user = Craft::$app->getUser();
+        $identity = $user->getIdentity();
+        if (!$identity) {
             return $this->asJson([]);
         }
 
-        $conversations = CoPilot::getInstance()->conversationService->getAllForContext(
-            $user->id,
-            'entry',
-            (int)$contextId,
-        );
+        $canViewAll = $user->checkPermission(Constants::PERMISSION_VIEW_OTHER_USERS_CHATS);
+
+        $conversations = $canViewAll
+            ? CoPilot::getInstance()->conversationService->getAllForContextAllUsers('entry', $contextId)
+            : CoPilot::getInstance()->conversationService->getAllForContext($identity->id, 'entry', $contextId);
 
         $data = array_map(fn(Conversation $c) => [
             'id' => $c->id,
             'title' => $c->title,
             'dateUpdated' => $c->dateUpdated,
+            'userId' => $c->userId,
         ], $conversations);
 
         return $this->asJson($data);

@@ -95,7 +95,8 @@
     z-index: 100;
 }
 .co-pilot-slideout-dropdown__item {
-    display: block;
+    display: flex;
+    align-items: center;
     width: 100%;
     padding: 8px 12px;
     background: none;
@@ -104,9 +105,28 @@
     font-size: 13px;
     color: var(--text-color);
     cursor: pointer;
-    white-space: nowrap;
+}
+.co-pilot-slideout-dropdown__label {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.co-pilot-slideout-dropdown__delete {
+    flex-shrink: 0;
+    margin-left: 8px;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--gray-400);
+    opacity: 0;
+    cursor: pointer;
+}
+.co-pilot-slideout-dropdown__item:hover .co-pilot-slideout-dropdown__delete {
+    opacity: 1;
+}
+.co-pilot-slideout-dropdown__delete:hover {
+    color: var(--red-500);
 }
 .co-pilot-slideout-dropdown__item:hover {
     background: var(--gray-050);
@@ -130,4 +150,6 @@
     window.__coPilotEntryId = {{ entryId ?? 'null' }};
     window.__coPilotSiteHandle = {{ (siteHandle ?? null)|json_encode|raw }};
     window.__coPilotExecutionMode = {{ craft.app.plugins.getPlugin('co-pilot').getSettings().agentExecutionMode|json_encode|raw }};
+    window.__coPilotCurrentUserId = {{ currentUser.id ?? 'null' }};
+    window.__coPilotPermissions = {{ permissions|json_encode|raw }};
 </script>

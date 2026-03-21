@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useModels } from './composables/useModels';
 import { useConversations } from './composables/useConversations';
 import { useDebugExport } from './composables/useDebugExport';
@@ -31,6 +31,18 @@ const { handleCommand } = useCommandHandler({
       { role: 'assistant', content: summary, toolCalls: null, inputTokens: 0, outputTokens: 0 },
     ]);
   },
+});
+
+const isReadonly = computed(() => {
+  // No active conversation — check createChat permission
+  if (!activeConversationId.value) {
+    return init.permissions?.createChat === false;
+  }
+  // Own conversation — always editable
+  const conv = conversations.value.find((c) => c.id === activeConversationId.value);
+  if (!conv || conv.userId === init.currentUserId) return false;
+  // Other user's conversation — check editOtherUsersChats
+  return !init.permissions?.editOtherUsersChats;
 });
 
 function updateUrl(conversationId: number | null) {
@@ -95,6 +107,7 @@ onMounted(() => {
       :is-exporting="isExporting"
       :providers="providers"
       :current-provider="currentProvider"
+      :can-create-chat="init.permissions?.createChat"
       @new-chat="newChat"
       @export-debug="handleExportDebug"
       @update:current-provider="switchProvider($event)"
@@ -104,6 +117,9 @@ onMounted(() => {
     <ConversationSidebar
       :conversations="conversations"
       :active-id="activeConversationId"
+      :current-user-id="init.currentUserId"
+      :can-delete-own="init.permissions?.deleteChat"
+      :can-delete-others="init.permissions?.deleteOtherUsersChats"
       @select="selectConversation"
       @delete="handleDeleteConversation"
     />
@@ -117,6 +133,7 @@ onMounted(() => {
     :provider="currentProvider"
     :execution-mode="executionMode"
     :site-handle="init.siteHandle"
+    :readonly="isReadonly"
     @conversation-created="onConversationCreated"
     @update:model="currentModel = $event"
     @update:execution-mode="executionMode = $event"

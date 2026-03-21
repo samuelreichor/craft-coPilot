@@ -1,15 +1,24 @@
 <script setup lang="ts">
 import type { ConversationSummary } from '../types';
 
-defineProps<{
+const props = defineProps<{
   conversations: ConversationSummary[];
   activeId: number | null;
+  currentUserId?: number | null;
+  canDeleteOwn?: boolean;
+  canDeleteOthers?: boolean;
 }>();
 
 defineEmits<{
   select: [id: number];
   delete: [id: number];
 }>();
+
+function canDelete(conv: ConversationSummary): boolean {
+  const isOwn = conv.userId === props.currentUserId;
+  if (isOwn) return props.canDeleteOwn !== false;
+  return props.canDeleteOthers === true;
+}
 </script>
 
 <template>
@@ -30,6 +39,7 @@ defineEmits<{
         >
           <span class="label">{{ conv.title }}</span>
           <span
+            v-if="canDelete(conv)"
             class="co-pilot-sidebar-delete"
             role="button"
             title="Delete conversation"

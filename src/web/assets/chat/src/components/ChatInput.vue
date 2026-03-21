@@ -17,6 +17,7 @@ const props = defineProps<{
   models?: string[];
   currentModel?: string;
   executionMode?: string;
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -363,7 +364,8 @@ defineExpose({ focus });
       ref="textarea"
       class="co-pilot-input__textarea"
       v-model="text"
-      :placeholder="pendingCommand?.param?.type === 'text' ? pendingCommand.param.label + '...' : (compact ? 'Ask about this entry...' : 'Ask CoPilot...')"
+      :placeholder="readonly ? 'Read-only — you cannot edit this conversation' : (pendingCommand?.param?.type === 'text' ? pendingCommand.param.label + '...' : (compact ? 'Ask about this entry...' : 'Ask CoPilot...'))"
+      :disabled="readonly"
       rows="1"
       @keydown="handleKeydown"
       @input="autoGrow"

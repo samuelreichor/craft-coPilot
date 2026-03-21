@@ -36,6 +36,7 @@ export interface ConversationSummary {
   id: number;
   title: string;
   dateUpdated: string;
+  userId?: number;
 }
 
 export interface ChatPanelProps {

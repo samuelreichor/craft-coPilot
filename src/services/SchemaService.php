@@ -14,6 +14,7 @@ use samuelreichor\coPilot\constants\Constants;
 use samuelreichor\coPilot\CoPilot;
 use samuelreichor\coPilot\enums\SectionAccess;
 use samuelreichor\coPilot\helpers\Logger;
+use yii\caching\TagDependency;
 
 /**
  * Builds Craft schema descriptions for the AI.
@@ -29,7 +30,8 @@ class SchemaService extends Component
             return $this->buildSchema(slim: true);
         }
 
-        $cacheKey = Constants::CACHE_SCHEMA_PREFIX . 'overview';
+        $userId = Craft::$app->getUser()->getId() ?? 0;
+        $cacheKey = Constants::CACHE_SCHEMA_PREFIX . 'overview.' . $userId;
         $cached = Craft::$app->getCache()->get($cacheKey);
 
         if ($cached !== false) {
@@ -37,7 +39,8 @@ class SchemaService extends Component
         }
 
         $schema = $this->buildSchema(slim: true);
-        Craft::$app->getCache()->set($cacheKey, $schema, 3600);
+        $dependency = new TagDependency(['tags' => [Constants::CACHE_SCHEMA_PREFIX . 'overview']]);
+        Craft::$app->getCache()->set($cacheKey, $schema, 3600, $dependency);
 
         return $schema;
     }
@@ -92,7 +95,7 @@ class SchemaService extends Component
 
     public function invalidateCache(): void
     {
-        Craft::$app->getCache()->delete(Constants::CACHE_SCHEMA_PREFIX . 'overview');
+        TagDependency::invalidate(Craft::$app->getCache(), Constants::CACHE_SCHEMA_PREFIX . 'overview');
 
         $sections = Craft::$app->getEntries()->getAllSections();
         foreach ($sections as $section) {

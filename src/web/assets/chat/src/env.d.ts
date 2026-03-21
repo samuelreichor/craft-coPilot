@@ -36,15 +36,19 @@ interface CraftSlideout {
 interface Window {
   Craft: CraftStatic;
   __COPILOT_INIT__?: {
-    conversations?: Array<{ id: number; title: string; dateUpdated: string }>;
+    conversations?: Array<{ id: number; title: string; dateUpdated: string; userId?: number }>;
     contextId?: number | null;
     activeConversationId?: number | null;
     siteHandle?: string | null;
     executionMode?: string | null;
+    currentUserId?: number | null;
+    permissions?: { createChat?: boolean; deleteChat?: boolean; deleteOtherUsersChats?: boolean; editOtherUsersChats?: boolean };
   };
   __coPilotEntryId?: number | null;
   __coPilotSiteHandle?: string | null;
   __coPilotExecutionMode?: string | null;
+  __coPilotCurrentUserId?: number | null;
+  __coPilotPermissions?: { deleteChat?: boolean; editOtherUsersChats?: boolean; deleteOtherUsersChats?: boolean };
   coPilotApp?: {
     openWithContext: (entryId: number) => void;
   };

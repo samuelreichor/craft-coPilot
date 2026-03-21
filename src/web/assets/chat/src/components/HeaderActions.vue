@@ -6,6 +6,7 @@ defineProps<{
   isExporting: boolean;
   providers: ProviderInfo[];
   currentProvider: string;
+  canCreateChat?: boolean;
 }>();
 
 defineEmits<{
@@ -46,7 +47,7 @@ defineEmits<{
         </option>
       </select>
     </div>
-    <button type="button" class="btn submit" @click="$emit('new-chat')">
+    <button v-if="canCreateChat !== false" type="button" class="btn submit" @click="$emit('new-chat')">
       New Chat +
     </button>
   </div>

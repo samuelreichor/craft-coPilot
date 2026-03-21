@@ -35,6 +35,8 @@
             activeConversationId: {{ activeConversationId ?? 'null' }},
             siteHandle: {{ selectedSite.handle|json_encode|raw }},
             executionMode: {{ craft.app.plugins.getPlugin('co-pilot').getSettings().agentExecutionMode|json_encode|raw }},
+            currentUserId: {{ currentUserId ?? 'null' }},
+            permissions: {{ permissionsJson|raw }},
         };
     </script>
 {% endblock %}

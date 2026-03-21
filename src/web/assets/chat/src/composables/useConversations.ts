@@ -3,13 +3,17 @@ import { apiPost } from './useCraftApi';
 import type {
   ConversationSummary,
   ConversationDetail,
-  ToolCall,
   UIMessage,
 } from '../types';
 import { parseAttachmentsFromContent } from '../utils/attachments';
 
+interface UseConversationsOptions {
+  contextId?: number | null;
+}
+
 export function useConversations(
   initialConversations: ConversationSummary[] = [],
+  options?: UseConversationsOptions,
 ) {
   const conversations = ref<ConversationSummary[]>(initialConversations);
   const activeConversationId = ref<number | null>(null);
@@ -47,46 +51,6 @@ export function useConversations(
       });
   }
 
-  async function loadEntryConversation(
-    contextId: number,
-  ): Promise<{ conversationId: number | null; messages: UIMessage[] }> {
-    const data = await apiPost<{
-      id: number | null;
-      messages: Array<{
-        role: string;
-        content: string;
-        toolCalls?: ToolCall[] | null;
-      }>;
-    }>('co-pilot/chat/load-entry-conversation', { contextId });
-
-    const messages: UIMessage[] = (data.messages || [])
-      .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .map((m) => {
-        const raw =
-          typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-        if (m.role === 'user') {
-          const parsed = parseAttachmentsFromContent(raw);
-          return {
-            role: 'user' as const,
-            content: parsed.content,
-            attachments: parsed.attachments,
-            toolCalls: null,
-            inputTokens: 0,
-            outputTokens: 0,
-          };
-        }
-        return {
-          role: 'assistant' as const,
-          content: raw,
-          toolCalls: m.toolCalls ?? null,
-          inputTokens: 0,
-          outputTokens: 0,
-        };
-      });
-
-    return { conversationId: data.id, messages };
-  }
-
   async function deleteConversation(id: number): Promise<void> {
     await apiPost('co-pilot/chat/delete-conversation', { id });
     conversations.value = conversations.value.filter((c) => c.id !== id);
@@ -97,12 +61,21 @@ export function useConversations(
 
   async function refreshConversations(): Promise<void> {
     try {
-      const data = await apiPost<ConversationSummary[]>(
-        'co-pilot/chat/get-conversations',
-      );
-      conversations.value = data;
+      const ctxId = options?.contextId;
+      if (ctxId) {
+        const data = await apiPost<ConversationSummary[]>(
+          'co-pilot/chat/get-entry-conversations',
+          { contextId: ctxId },
+        );
+        conversations.value = data;
+      } else {
+        const data = await apiPost<ConversationSummary[]>(
+          'co-pilot/chat/get-conversations',
+        );
+        conversations.value = data;
+      }
     } catch {
-      // Sidebar refresh is non-critical
+      // Refresh is non-critical
     }
   }
 
@@ -110,7 +83,6 @@ export function useConversations(
     conversations,
     activeConversationId,
     loadConversation,
-    loadEntryConversation,
     deleteConversation,
     refreshConversations,
   };
