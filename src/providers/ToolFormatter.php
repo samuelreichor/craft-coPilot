@@ -24,8 +24,13 @@ class ToolFormatter
             'parameters' => $tool['parameters'],
         ], $tools);
 
-        if (CoPilot::getInstance()->getSettings()->webSearchEnabled) {
-            $formatted[] = ['type' => 'web_search'];
+        try {
+            $plugin = CoPilot::getInstance();
+            if ($plugin !== null && $plugin->getSettings()->webSearchEnabled) {
+                $formatted[] = ['type' => 'web_search'];
+            }
+        } catch (\Throwable) {
+            // Plugin not bootstrapped (e.g. unit tests)
         }
 
         return $formatted;

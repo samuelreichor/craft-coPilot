@@ -356,9 +356,9 @@ class OpenAIProvider implements ProviderInterface
 
             case 'response.output_item.added':
                 if (($json['item']['type'] ?? '') === 'function_call') {
-                    $callId = $json['item']['call_id'] ?? '';
-                    $toolCalls[$callId] = [
-                        'id' => $callId,
+                    $itemId = $json['item']['id'] ?? '';
+                    $toolCalls[$itemId] = [
+                        'id' => $json['item']['call_id'] ?? $itemId,
                         'name' => $json['item']['name'] ?? '',
                         'arguments' => '',
                     ];
@@ -366,9 +366,9 @@ class OpenAIProvider implements ProviderInterface
                 break;
 
             case 'response.function_call_arguments.delta':
-                $callId = $json['call_id'] ?? $json['item_id'] ?? '';
-                if (isset($toolCalls[$callId])) {
-                    $toolCalls[$callId]['arguments'] .= $json['delta'] ?? '';
+                $itemId = $json['item_id'] ?? '';
+                if (isset($toolCalls[$itemId])) {
+                    $toolCalls[$itemId]['arguments'] .= $json['delta'] ?? '';
                 }
                 break;
 

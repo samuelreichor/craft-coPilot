@@ -39,13 +39,12 @@ class ToolFormatterTest extends TestCase
 
         $this->assertCount(2, $formatted);
 
-        // Check OpenAI function calling format
+        // Check OpenAI Responses API format (flat structure)
         $first = $formatted[0];
         $this->assertSame('function', $first['type']);
-        $this->assertArrayHasKey('function', $first);
-        $this->assertSame('readEntry', $first['function']['name']);
-        $this->assertSame('Reads an entry', $first['function']['description']);
-        $this->assertArrayHasKey('parameters', $first['function']);
+        $this->assertSame('readEntry', $first['name']);
+        $this->assertSame('Reads an entry', $first['description']);
+        $this->assertArrayHasKey('parameters', $first);
     }
 
     public function testForAnthropicFormat(): void
@@ -96,7 +95,7 @@ class ToolFormatterTest extends TestCase
         // Both formats should preserve the parameters/schema
         $this->assertSame(
             $tools[0]['parameters'],
-            $openai[0]['function']['parameters'],
+            $openai[0]['parameters'],
         );
         $this->assertSame(
             $tools[0]['parameters'],
