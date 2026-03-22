@@ -1,9 +1,9 @@
 {
   "name": "samuelreichor/craft-co-pilot",
-  "description": "AI Agent plugin for Craft CMS with chat interface, entry context awareness, field-level read/write, and multi-provider support.",
+  "description": "AI Agent plugin for Craft CMS that can understand and edit your content.",
   "type": "craft-plugin",
   "license": "proprietary",
-  "version": "0.0.0-RC7",
+  "version": "0.0.0-RC8",
   "support": {
     "email": "samuelreichor@gmail.com",
     "issues": "https://github.com/samuelreichor/craft-co-pilot/issues?state=open",
