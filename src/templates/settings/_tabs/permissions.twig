@@ -59,3 +59,123 @@
         <p class="light">No sections found.</p>
     {% endif %}
 
+    <hr>
+
+    <h3>Volume Access</h3>
+    <p class="light">Configure which asset volumes the AI can access.</p>
+
+    {% if config.volumeAccess is defined %}
+        <p class="warning with-icon">
+            {{ configWarning('volumeAccess') }}
+        </p>
+    {% endif %}
+
+    {% set volumes = craft.app.volumes.allVolumes %}
+
+    {% if volumes|length %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>Volume</th>
+                    <th class="thin centeralign">Blocked</th>
+                    <th class="thin centeralign">Read Only</th>
+                    <th class="thin centeralign">Read + Write</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for volume in volumes %}
+                    {% set currentAccess = settings.volumeAccess[volume.uid] ?? 'readWrite' %}
+                    <tr>
+                        <td>
+                            <strong>{{ volume.name }}</strong>
+                            <span class="light"> &ndash; {{ volume.handle }}</span>
+                        </td>
+                        <td class="thin centeralign">
+                            <input type="radio"
+                                   name="volumeAccess[{{ volume.uid }}]"
+                                   value="blocked"
+                                   {{ currentAccess == 'blocked' ? 'checked' }}
+                                   {{ config.volumeAccess is defined ? 'disabled' }}>
+                        </td>
+                        <td class="thin centeralign">
+                            <input type="radio"
+                                   name="volumeAccess[{{ volume.uid }}]"
+                                   value="readOnly"
+                                   {{ currentAccess == 'readOnly' ? 'checked' }}
+                                   {{ config.volumeAccess is defined ? 'disabled' }}>
+                        </td>
+                        <td class="thin centeralign">
+                            <input type="radio"
+                                   name="volumeAccess[{{ volume.uid }}]"
+                                   value="readWrite"
+                                   {{ currentAccess == 'readWrite' ? 'checked' }}
+                                   {{ config.volumeAccess is defined ? 'disabled' }}>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="light">No volumes found.</p>
+    {% endif %}
+
+    <hr>
+
+    <h3>Category Group Access</h3>
+    <p class="light">Configure which category groups the AI can access.</p>
+
+    {% if config.categoryGroupAccess is defined %}
+        <p class="warning with-icon">
+            {{ configWarning('categoryGroupAccess') }}
+        </p>
+    {% endif %}
+
+    {% set categoryGroups = craft.app.categories.allGroups %}
+
+    {% if categoryGroups|length %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>Category Group</th>
+                    <th class="thin centeralign">Blocked</th>
+                    <th class="thin centeralign">Read Only</th>
+                    <th class="thin centeralign">Read + Write</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for group in categoryGroups %}
+                    {% set currentAccess = settings.categoryGroupAccess[group.uid] ?? 'readWrite' %}
+                    <tr>
+                        <td>
+                            <strong>{{ group.name }}</strong>
+                            <span class="light"> &ndash; {{ group.handle }}</span>
+                        </td>
+                        <td class="thin centeralign">
+                            <input type="radio"
+                                   name="categoryGroupAccess[{{ group.uid }}]"
+                                   value="blocked"
+                                   {{ currentAccess == 'blocked' ? 'checked' }}
+                                   {{ config.categoryGroupAccess is defined ? 'disabled' }}>
+                        </td>
+                        <td class="thin centeralign">
+                            <input type="radio"
+                                   name="categoryGroupAccess[{{ group.uid }}]"
+                                   value="readOnly"
+                                   {{ currentAccess == 'readOnly' ? 'checked' }}
+                                   {{ config.categoryGroupAccess is defined ? 'disabled' }}>
+                        </td>
+                        <td class="thin centeralign">
+                            <input type="radio"
+                                   name="categoryGroupAccess[{{ group.uid }}]"
+                                   value="readWrite"
+                                   {{ currentAccess == 'readWrite' ? 'checked' }}
+                                   {{ config.categoryGroupAccess is defined ? 'disabled' }}>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="light">No category groups found.</p>
+    {% endif %}
+

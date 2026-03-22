@@ -34,6 +34,22 @@ class Settings extends Model
     public array $sectionAccess = [];
 
     /**
+     * Volume access configuration.
+     * Maps volume UIDs to SectionAccess enum values (reused for blocked/readOnly/readWrite).
+     *
+     * @var array<string, string>
+     */
+    public array $volumeAccess = [];
+
+    /**
+     * Category group access configuration.
+     * Maps category group UIDs to SectionAccess enum values.
+     *
+     * @var array<string, string>
+     */
+    public array $categoryGroupAccess = [];
+
+    /**
      * Element type blocklist.
      * List of blocked element type classes.
      *
@@ -105,6 +121,26 @@ class Settings extends Model
     public function getSectionAccessLevel(string $sectionUid): SectionAccess
     {
         $value = $this->sectionAccess[$sectionUid] ?? SectionAccess::ReadWrite->value;
+
+        return SectionAccess::tryFrom($value) ?? SectionAccess::ReadWrite;
+    }
+
+    /**
+     * Returns the access level for a given volume UID.
+     */
+    public function getVolumeAccessLevel(string $volumeUid): SectionAccess
+    {
+        $value = $this->volumeAccess[$volumeUid] ?? SectionAccess::ReadWrite->value;
+
+        return SectionAccess::tryFrom($value) ?? SectionAccess::ReadWrite;
+    }
+
+    /**
+     * Returns the access level for a given category group UID.
+     */
+    public function getCategoryGroupAccessLevel(string $groupUid): SectionAccess
+    {
+        $value = $this->categoryGroupAccess[$groupUid] ?? SectionAccess::ReadWrite->value;
 
         return SectionAccess::tryFrom($value) ?? SectionAccess::ReadWrite;
     }

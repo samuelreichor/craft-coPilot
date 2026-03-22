@@ -5,6 +5,7 @@ namespace samuelreichor\coPilot\tools;
 use Craft;
 use craft\elements\Asset;
 use samuelreichor\coPilot\CoPilot;
+use samuelreichor\coPilot\enums\SectionAccess;
 
 class SearchAssetsTool implements ToolInterface
 {
@@ -116,10 +117,15 @@ class SearchAssetsTool implements ToolInterface
             return [];
         }
 
+        $settings = CoPilot::getInstance()->getSettings();
         $volumes = Craft::$app->getVolumes()->getAllVolumes();
         $ids = [];
 
         foreach ($volumes as $volume) {
+            if ($settings->getVolumeAccessLevel($volume->uid) === SectionAccess::Blocked) {
+                continue;
+            }
+
             if ($user->can("viewAssets:{$volume->uid}")) {
                 $ids[] = $volume->id;
             }

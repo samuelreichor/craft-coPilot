@@ -15,9 +15,12 @@ use samuelreichor\coPilot\helpers\Logger;
 use samuelreichor\coPilot\models\Message;
 use samuelreichor\coPilot\models\Settings;
 use samuelreichor\coPilot\models\StreamChunk;
+use samuelreichor\coPilot\tools\CreateCategoryTool;
 use samuelreichor\coPilot\tools\CreateEntryTool;
+use samuelreichor\coPilot\tools\DescribeCategoryGroupTool;
 use samuelreichor\coPilot\tools\DescribeEntryTypeTool;
 use samuelreichor\coPilot\tools\DescribeSectionTool;
+use samuelreichor\coPilot\tools\DescribeVolumeTool;
 use samuelreichor\coPilot\tools\ListSectionsTool;
 use samuelreichor\coPilot\tools\ListSitesTool;
 use samuelreichor\coPilot\tools\PublishEntryTool;
@@ -25,10 +28,13 @@ use samuelreichor\coPilot\tools\ReadAssetTool;
 use samuelreichor\coPilot\tools\ReadEntriesTool;
 use samuelreichor\coPilot\tools\ReadEntryTool;
 use samuelreichor\coPilot\tools\SearchAssetsTool;
+use samuelreichor\coPilot\tools\SearchCategoriesTool;
 use samuelreichor\coPilot\tools\SearchEntriesTool;
 use samuelreichor\coPilot\tools\SearchTagsTool;
 use samuelreichor\coPilot\tools\SearchUsersTool;
 use samuelreichor\coPilot\tools\ToolInterface;
+use samuelreichor\coPilot\tools\UpdateAssetTool;
+use samuelreichor\coPilot\tools\UpdateCategoryTool;
 use samuelreichor\coPilot\tools\UpdateEntryTool;
 
 /**
@@ -407,11 +413,17 @@ class AgentService extends Component
             new SearchEntriesTool(),
             new SearchAssetsTool(),
             new SearchTagsTool(),
+            new SearchCategoriesTool(),
+            new CreateCategoryTool(),
+            new UpdateCategoryTool(),
             new SearchUsersTool(),
+            new UpdateAssetTool(),
             new ListSectionsTool(),
             new ListSitesTool(),
             new DescribeSectionTool(),
             new DescribeEntryTypeTool(),
+            new DescribeCategoryGroupTool(),
+            new DescribeVolumeTool(),
             new ReadAssetTool(),
         ];
 

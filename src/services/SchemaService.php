@@ -5,6 +5,7 @@ namespace samuelreichor\coPilot\services;
 use Craft;
 use craft\base\Component;
 use craft\base\FieldInterface;
+use craft\fieldlayoutelements\BaseField;
 use craft\fieldlayoutelements\CustomField;
 use craft\fields\ContentBlock as ContentBlockField;
 use craft\fields\Matrix as MatrixField;
@@ -90,6 +91,60 @@ class SchemaService extends Component
         CacheHelper::set($cacheKey, $schema);
 
         return $schema;
+    }
+
+    /**
+     * Returns field definitions for a category group.
+     *
+     * @return array<string, mixed>
+     */
+    public function getCategoryGroupSchema(string $handle): array
+    {
+        $group = Craft::$app->getCategories()->getGroupByHandle($handle);
+        if (!$group) {
+            return ['error' => "Category group '{$handle}' not found."];
+        }
+
+        $settings = CoPilot::getInstance()->getSettings();
+        if ($settings->getCategoryGroupAccessLevel($group->uid) === SectionAccess::Blocked) {
+            return ['error' => "Category group '{$handle}' is blocked."];
+        }
+
+        $fieldLayout = $group->getFieldLayout();
+        $fields = $this->describeFieldLayoutFields($fieldLayout);
+
+        return [
+            'handle' => $group->handle,
+            'name' => $group->name,
+            'fields' => $fields,
+        ];
+    }
+
+    /**
+     * Returns field definitions for an asset volume.
+     *
+     * @return array<string, mixed>
+     */
+    public function getVolumeSchema(string $handle): array
+    {
+        $volume = Craft::$app->getVolumes()->getVolumeByHandle($handle);
+        if (!$volume) {
+            return ['error' => "Volume '{$handle}' not found."];
+        }
+
+        $settings = CoPilot::getInstance()->getSettings();
+        if ($settings->getVolumeAccessLevel($volume->uid) === SectionAccess::Blocked) {
+            return ['error' => "Volume '{$handle}' is blocked."];
+        }
+
+        $fieldLayout = $volume->getFieldLayout();
+        $fields = $this->describeFieldLayoutFields($fieldLayout);
+
+        return [
+            'handle' => $volume->handle,
+            'name' => $volume->name,
+            'fields' => $fields,
+        ];
     }
 
     public function invalidateCache(): void
@@ -233,27 +288,8 @@ class SchemaService extends Component
      */
     private function describeEntryType(EntryType $entryType): array
     {
-        $fields = [];
-
-        if ($entryType->hasTitleField) {
-            $fields[] = [
-                'handle' => 'title',
-                'name' => 'Title',
-                'type' => 'native',
-                'required' => true,
-            ];
-        }
-
-        if ($entryType->showSlugField) {
-            $fields[] = [
-                'handle' => 'slug',
-                'name' => 'Slug',
-                'type' => 'native',
-            ];
-        }
-
         $fieldLayout = $entryType->getFieldLayout();
-        $fields = array_merge($fields, $this->describeFieldLayoutFields($fieldLayout));
+        $fields = $this->describeFieldLayoutFields($fieldLayout);
 
         $info = [
             'handle' => $entryType->handle,
@@ -276,27 +312,8 @@ class SchemaService extends Component
      */
     private function describeEntryTypeSlim(EntryType $entryType): array
     {
-        $fields = [];
-
-        if ($entryType->hasTitleField) {
-            $fields[] = [
-                'handle' => 'title',
-                'name' => 'Title',
-                'type' => 'native',
-                'required' => true,
-            ];
-        }
-
-        if ($entryType->showSlugField) {
-            $fields[] = [
-                'handle' => 'slug',
-                'name' => 'Slug',
-                'type' => 'native',
-            ];
-        }
-
         $fieldLayout = $entryType->getFieldLayout();
-        $fields = array_merge($fields, $this->describeFieldLayoutFieldsSlim($fieldLayout));
+        $fields = $this->describeFieldLayoutFieldsSlim($fieldLayout);
 
         $info = [
             'handle' => $entryType->handle,
@@ -323,6 +340,28 @@ class SchemaService extends Component
         $registry = CoPilot::getInstance()->transformerRegistry;
         $fields = [];
 
+        // Native fields from layout
+        $nativeElements = $fieldLayout->getElementsByType(BaseField::class);
+        foreach ($nativeElements as $element) {
+            if ($element instanceof CustomField) {
+                continue;
+            }
+
+            $handle = $element->attribute();
+            $fieldInfo = [
+                'handle' => $handle,
+                'name' => $element->label() ?? ucfirst($handle),
+                'type' => 'native',
+            ];
+
+            if ($element->required) {
+                $fieldInfo['required'] = true;
+            }
+
+            $fields[] = $fieldInfo;
+        }
+
+        // Custom fields — slim: Matrix fields only list block type handles
         foreach ($registry->resolveFieldLayoutFields($fieldLayout) as $resolved) {
             $layoutElement = $resolved['layoutElement'];
             $field = $resolved['field'];
@@ -354,6 +393,8 @@ class SchemaService extends Component
             }
         }
 
+        // Generated fields
+        $nativeHandles = array_column($fields, 'handle');
         if (method_exists($fieldLayout, 'getGeneratedFields')) {
             foreach ($fieldLayout->getGeneratedFields() as $generated) {
                 if (!is_array($generated) || !isset($generated['handle'])) {
@@ -361,7 +402,7 @@ class SchemaService extends Component
                 }
 
                 $handle = $generated['handle'];
-                if ($handle === 'title' || $handle === 'slug') {
+                if (in_array($handle, $nativeHandles, true)) {
                     continue;
                 }
 
@@ -430,19 +471,8 @@ class SchemaService extends Component
         $blockTypes = [];
 
         foreach ($field->getEntryTypes() as $entryType) {
-            $blockFields = [];
-
-            if ($entryType->hasTitleField) {
-                $blockFields[] = [
-                    'handle' => 'title',
-                    'name' => 'Title',
-                    'type' => 'native',
-                    'required' => true,
-                ];
-            }
-
             $fieldLayout = $entryType->getFieldLayout();
-            $blockFields = array_merge($blockFields, $this->describeFieldLayoutFields($fieldLayout));
+            $blockFields = $this->describeFieldLayoutFields($fieldLayout);
 
             $blockType = [
                 'handle' => $entryType->handle,
@@ -462,6 +492,8 @@ class SchemaService extends Component
     }
 
     /**
+     * Describes all fields in a layout: native (title, slug, alt, …), custom, and generated.
+     *
      * @return array<int, array<string, mixed>>
      */
     private function describeFieldLayoutFields(FieldLayout $fieldLayout): array
@@ -469,10 +501,35 @@ class SchemaService extends Component
         $registry = CoPilot::getInstance()->transformerRegistry;
         $fields = [];
 
+        // Native fields (title, slug, alt, etc.) from the layout
+        $nativeElements = $fieldLayout->getElementsByType(BaseField::class);
+        foreach ($nativeElements as $element) {
+            // CustomField extends BaseField — skip here, handled below
+            if ($element instanceof CustomField) {
+                continue;
+            }
+
+            $handle = $element->attribute();
+            $fieldInfo = [
+                'handle' => $handle,
+                'name' => $element->label() ?? ucfirst($handle),
+                'type' => 'native',
+            ];
+
+            if ($element->required) {
+                $fieldInfo['required'] = true;
+            }
+
+            $fields[] = $fieldInfo;
+        }
+
+        // Custom fields
         foreach ($registry->resolveFieldLayoutFields($fieldLayout) as $resolved) {
             $fields[] = $this->describeCustomField($resolved['layoutElement'], $resolved['field']);
         }
 
+        // Generated fields
+        $nativeHandles = array_column($fields, 'handle');
         if (method_exists($fieldLayout, 'getGeneratedFields')) {
             foreach ($fieldLayout->getGeneratedFields() as $generated) {
                 if (!is_array($generated) || !isset($generated['handle'])) {
@@ -481,7 +538,8 @@ class SchemaService extends Component
 
                 $handle = $generated['handle'];
 
-                if ($handle === 'title' || $handle === 'slug') {
+                // Skip if already covered by native or custom fields
+                if (in_array($handle, $nativeHandles, true)) {
                     continue;
                 }
 
