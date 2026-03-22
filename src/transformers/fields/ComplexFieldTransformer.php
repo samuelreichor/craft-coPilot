@@ -290,6 +290,7 @@ class ComplexFieldTransformer implements FieldTransformerInterface
                 $subField instanceof MatrixField,
                 $subField instanceof \craft\fields\Assets,
                 $subField instanceof \craft\fields\Entries,
+                $subField instanceof \craft\fields\Categories,
                 $subField instanceof \craft\fields\Tags,
                 $subField instanceof \craft\fields\Users,
                 $subField instanceof \craft\fields\Addresses,
