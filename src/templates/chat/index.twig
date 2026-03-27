@@ -1,6 +1,6 @@
 {% extends '_layouts/cp' %}
 
-{% set title = 'CoPilot' %}
+{% set title = craft.app.plugins.getPlugin('co-pilot').getSettings().pluginName %}
 {% set selectedSubnavItem = 'chat' %}
 
 {% set selectableSites = craft.app.sites.getEditableSites() %}
