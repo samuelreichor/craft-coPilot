@@ -3,7 +3,6 @@
 namespace samuelreichor\coPilot\services;
 
 use craft\base\Component;
-use craft\helpers\App;
 use samuelreichor\coPilot\CoPilot;
 use samuelreichor\coPilot\events\RegisterProvidersEvent;
 use samuelreichor\coPilot\providers\AnthropicProvider;
@@ -43,17 +42,9 @@ class ProviderService extends Component
      */
     public function getConfiguredProviders(): array
     {
-        $settings = CoPilot::getInstance()->getSettings();
-        $envVarMap = [
-            'openai' => $settings->openaiApiKeyEnvVar,
-            'anthropic' => $settings->anthropicApiKeyEnvVar,
-            'gemini' => $settings->geminiApiKeyEnvVar,
-        ];
-
         $configured = [];
         foreach ($this->getProviders() as $handle => $provider) {
-            $envVar = $envVarMap[$handle] ?? null;
-            if ($envVar && App::parseEnv($envVar)) {
+            if ($provider->getApiKey() !== null) {
                 $configured[$handle] = $provider;
             }
         }
@@ -80,6 +71,15 @@ class ProviderService extends Component
         ];
 
         $this->trigger(self::EVENT_REGISTER_PROVIDERS, $event);
+
+        // Apply stored configuration to each provider
+        $settings = CoPilot::getInstance()->getSettings();
+        foreach ($event->providers as $handle => $provider) {
+            $config = $settings->getProviderConfig($handle);
+            if (!empty($config)) {
+                $provider->setConfig($config);
+            }
+        }
 
         $this->providers = $event->providers;
 

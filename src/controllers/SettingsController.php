@@ -24,18 +24,16 @@ class SettingsController extends Controller
         $plugin = CoPilot::getInstance();
         $providers = $plugin->providerService->getProviders();
 
-        $modelOptions = [];
+        $providerOptions = [];
         foreach ($providers as $handle => $provider) {
-            $modelOptions[$handle] = array_map(
-                fn(string $id) => ['label' => $id, 'value' => $id],
-                $provider->getAvailableModels(),
-            );
+            $providerOptions[] = ['label' => $provider->getName(), 'value' => $handle];
         }
 
         return $this->renderTemplate('co-pilot/settings/index', [
             'plugin' => $plugin,
             'settings' => $plugin->getSettings(),
-            'modelOptions' => $modelOptions,
+            'providers' => $providers,
+            'providerOptions' => $providerOptions,
             'config' => Craft::$app->getConfig()->getConfigFromFile('co-pilot'),
         ]);
     }

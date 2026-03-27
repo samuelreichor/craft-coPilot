@@ -107,17 +107,13 @@ class ChatController extends Controller
         $configuredProviders = $plugin->providerService->getConfiguredProviders();
         $defaultProvider = $plugin->providerService->getActiveProvider();
 
-        $modelProperty = $settings->defaultProvider . 'Model';
-        $currentModel = $settings->$modelProperty ?? null;
-
         $providers = [];
         foreach ($configuredProviders as $handle => $provider) {
-            $provModelProp = $handle . 'Model';
             $providers[] = [
                 'handle' => $handle,
                 'name' => $provider->getName(),
                 'models' => $provider->getAvailableModels(),
-                'defaultModel' => $settings->$provModelProp ?? null,
+                'defaultModel' => $provider->getModel(),
             ];
         }
 
@@ -125,7 +121,7 @@ class ChatController extends Controller
             'provider' => $settings->defaultProvider,
             'providerName' => $defaultProvider->getName(),
             'models' => $defaultProvider->getAvailableModels(),
-            'currentModel' => $currentModel,
+            'currentModel' => $defaultProvider->getModel(),
             'providers' => $providers,
         ]);
     }

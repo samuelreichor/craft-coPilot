@@ -7,114 +7,19 @@
         id: 'defaultProvider',
         name: 'defaultProvider',
         value: settings.defaultProvider,
-        options: [
-            { label: 'OpenAI', value: 'openai' },
-            { label: 'Anthropic', value: 'anthropic' },
-            { label: 'Google Gemini', value: 'gemini' },
-        ],
+        options: providerOptions,
         disabled: config.defaultProvider is defined,
         warning: config.defaultProvider is defined ? configWarning('defaultProvider'),
         errors: settings.getErrors('defaultProvider'),
     }) }}
 
-    <hr>
-
-    <h3>OpenAI</h3>
-
-    <div class="flex" style="gap: 24px;">
-        <div style="flex: 3;">
-            {{ forms.autosuggestField({
-                label: 'API Key Environment Variable',
-                instructions: 'The environment variable name containing your OpenAI API key.',
-                id: 'openaiApiKeyEnvVar',
-                name: 'openaiApiKeyEnvVar',
-                value: settings.openaiApiKeyEnvVar,
-                suggestEnvVars: true,
-                placeholder: '$OPENAI_API_KEY',
-                disabled: config.openaiApiKeyEnvVar is defined,
-                warning: config.openaiApiKeyEnvVar is defined ? configWarning('openaiApiKeyEnvVar'),
-                errors: settings.getErrors('openaiApiKeyEnvVar'),
-            }) }}
-        </div>
-        <div style="flex: 1;">
-            {{ forms.selectField({
-                label: 'Default Model',
-                instructions: 'The default model for new chats.',
-                id: 'openaiModel',
-                name: 'openaiModel',
-                value: settings.openaiModel,
-                options: modelOptions.openai ?? [],
-                disabled: config.openaiModel is defined,
-                warning: config.openaiModel is defined ? configWarning('openaiModel'),
-                errors: settings.getErrors('openaiModel'),
-            }) }}
-        </div>
-    </div>
-
-    <hr>
-
-    <h3>Anthropic</h3>
-
-    <div class="flex" style="gap: 24px;">
-        <div style="flex: 3;">
-            {{ forms.autosuggestField({
-                label: 'API Key Environment Variable',
-                instructions: 'The environment variable name containing your Anthropic API key.',
-                id: 'anthropicApiKeyEnvVar',
-                name: 'anthropicApiKeyEnvVar',
-                value: settings.anthropicApiKeyEnvVar,
-                suggestEnvVars: true,
-                placeholder: '$ANTHROPIC_API_KEY',
-                disabled: config.anthropicApiKeyEnvVar is defined,
-                warning: config.anthropicApiKeyEnvVar is defined ? configWarning('anthropicApiKeyEnvVar'),
-                errors: settings.getErrors('anthropicApiKeyEnvVar'),
-            }) }}
-        </div>
-        <div style="flex: 1;">
-            {{ forms.selectField({
-                label: 'Default Model',
-                instructions: 'The default model for new chats.',
-                id: 'anthropicModel',
-                name: 'anthropicModel',
-                value: settings.anthropicModel,
-                options: modelOptions.anthropic ?? [],
-                disabled: config.anthropicModel is defined,
-                warning: config.anthropicModel is defined ? configWarning('anthropicModel'),
-                errors: settings.getErrors('anthropicModel'),
-            }) }}
-        </div>
-    </div>
-
-    <hr>
-
-    <h3>Google Gemini</h3>
-
-    <div class="flex" style="gap: 24px;">
-        <div style="flex: 3;">
-            {{ forms.autosuggestField({
-                label: 'API Key Environment Variable',
-                instructions: 'The environment variable name containing your Gemini API key.',
-                id: 'geminiApiKeyEnvVar',
-                name: 'geminiApiKeyEnvVar',
-                value: settings.geminiApiKeyEnvVar,
-                suggestEnvVars: true,
-                placeholder: '$GEMINI_API_KEY',
-                disabled: config.geminiApiKeyEnvVar is defined,
-                warning: config.geminiApiKeyEnvVar is defined ? configWarning('geminiApiKeyEnvVar'),
-                errors: settings.getErrors('geminiApiKeyEnvVar'),
-            }) }}
-        </div>
-        <div style="flex: 1;">
-            {{ forms.selectField({
-                label: 'Default Model',
-                instructions: 'The default model for new chats.',
-                id: 'geminiModel',
-                name: 'geminiModel',
-                value: settings.geminiModel,
-                options: modelOptions.gemini ?? [],
-                disabled: config.geminiModel is defined,
-                warning: config.geminiModel is defined ? configWarning('geminiModel'),
-                errors: settings.getErrors('geminiModel'),
-            }) }}
-        </div>
-    </div>
+    {% for handle, provider in providers %}
+        {% set html = provider.getSettingsHtml(
+            settings.getProviderConfig(handle),
+            config.providerSettings[handle] ?? {}
+        ) %}
+        {% if html|trim %}
+            <hr>
+            {{ html|raw }}
+        {% endif %}
+    {% endfor %}

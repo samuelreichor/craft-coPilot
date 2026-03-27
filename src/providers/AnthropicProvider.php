@@ -7,6 +7,7 @@ use craft\helpers\App;
 use samuelreichor\coPilot\CoPilot;
 use samuelreichor\coPilot\helpers\HttpClientFactory;
 use samuelreichor\coPilot\helpers\Logger;
+use samuelreichor\coPilot\helpers\StreamHelper;
 use samuelreichor\coPilot\models\AIResponse;
 use samuelreichor\coPilot\models\StreamChunk;
 
@@ -15,42 +16,151 @@ class AnthropicProvider implements ProviderInterface
     private const API_URL = 'https://api.anthropic.com/v1/messages';
     private const API_VERSION = '2023-06-01';
 
-    public function chat(
-        string $systemPrompt,
-        array $messages,
-        array $tools,
-        ?string $model = null,
-    ): AIResponse {
-        $settings = CoPilot::getInstance()->getSettings();
-        $apiKey = App::parseEnv($settings->anthropicApiKeyEnvVar);
+    private const DEFAULT_MODEL = 'claude-opus-4-6';
+    private const TITLE_MODEL = 'claude-sonnet-4-6';
+    private const AVAILABLE_MODELS = [
+        'claude-opus-4-6',
+        'claude-sonnet-4-6',
+    ];
 
-        if (!$apiKey) {
-            return AIResponse::error('Anthropic API key not configured. Set the environment variable ' . $settings->anthropicApiKeyEnvVar);
+    private string $apiKeyEnvVar = '';
+
+    private string $model = self::DEFAULT_MODEL;
+
+    public function getHandle(): string
+    {
+        return 'anthropic';
+    }
+
+    public function getName(): string
+    {
+        return 'Anthropic';
+    }
+
+    public function getIcon(): string
+    {
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M13.827 3.52h3.603L24 20.48h-3.603l-6.57-16.96zm-7.258 0h3.767L16.906 20.48h-3.674l-1.343-3.461H5.017l-1.344 3.46H0l6.57-16.96zm1.04 3.88L5.2 13.796h4.822L7.609 7.4z"/></svg>';
+    }
+
+    public function getApiKey(): ?string
+    {
+        $key = App::parseEnv($this->apiKeyEnvVar);
+
+        return $key ?: null;
+    }
+
+    public function getModel(): string
+    {
+        return $this->model;
+    }
+
+    public function getAvailableModels(): array
+    {
+        return self::AVAILABLE_MODELS;
+    }
+
+    public function getTitleModel(): string
+    {
+        return self::TITLE_MODEL;
+    }
+
+    public function validateApiKey(string $key): bool
+    {
+        $client = Craft::createGuzzleClient();
+
+        try {
+            $response = $client->post(self::API_URL, [
+                'headers' => [
+                    'x-api-key' => $key,
+                    'anthropic-version' => self::API_VERSION,
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => [
+                    'model' => self::TITLE_MODEL,
+                    'max_tokens' => 1,
+                    'messages' => [['role' => 'user', 'content' => 'hi']],
+                ],
+                'timeout' => 10,
+            ]);
+
+            return $response->getStatusCode() === 200;
+        } catch (\Throwable) {
+            return false;
         }
+    }
 
-        $model = $model ?? $settings->anthropicModel;
-
-        $payload = [
-            'model' => $model,
-            'max_tokens' => 4096,
-            'system' => $this->formatSystemPrompt($systemPrompt),
-            'messages' => $this->formatMessages($messages),
+    public function getDefaultConfig(): array
+    {
+        return [
+            'apiKeyEnvVar' => '',
+            'model' => self::DEFAULT_MODEL,
         ];
+    }
 
-        $formattedTools = ToolFormatter::forAnthropic($tools);
-        if ($settings->webSearchEnabled) {
-            $formattedTools[] = [
+    public function setConfig(array $config): void
+    {
+        $this->apiKeyEnvVar = $config['apiKeyEnvVar'] ?? '';
+        $this->model = $config['model'] ?? self::DEFAULT_MODEL;
+    }
+
+    public function getSettingsHtml(array $config, array $fileConfig): string
+    {
+        return Craft::$app->getView()->renderTemplate('co-pilot/settings/_provider-fields', [
+            'providerName' => $this->getName(),
+            'handle' => $this->getHandle(),
+            'config' => $config,
+            'fileConfig' => $fileConfig,
+            'models' => $this->getAvailableModels(),
+            'envPlaceholder' => '$ANTHROPIC_API_KEY',
+        ]);
+    }
+
+    public function formatTools(array $tools): array
+    {
+        $formatted = array_map(fn(array $tool) => [
+            'name' => $tool['name'],
+            'description' => $tool['description'],
+            'input_schema' => $tool['parameters'],
+        ], $tools);
+
+        if ($this->isWebSearchEnabled()) {
+            $formatted[] = [
                 'type' => 'web_search_20260209',
                 'name' => 'web_search',
                 'max_uses' => 3,
             ];
-            $formattedTools[] = [
+            $formatted[] = [
                 'type' => 'web_fetch_20260209',
                 'name' => 'web_fetch',
                 'max_uses' => 3,
             ];
         }
 
+        return $formatted;
+    }
+
+    public function chat(
+        string $systemPrompt,
+        array $messages,
+        array $tools,
+        ?string $model = null,
+    ): AIResponse {
+        $apiKey = $this->getApiKey();
+
+        if (!$apiKey) {
+            return AIResponse::error('Anthropic API key not configured. Set the environment variable ' . $this->apiKeyEnvVar);
+        }
+
+        $model = $model ?? $this->model;
+
+        $payload = [
+            'model' => $model,
+            'max_tokens' => 16384,
+            'system' => $this->formatSystemPrompt($systemPrompt),
+            'messages' => $this->formatMessages($messages),
+        ];
+
+        $formattedTools = $this->formatTools($tools);
         if (!empty($formattedTools)) {
             $this->applyCacheControl($formattedTools);
             $payload['tools'] = $formattedTools;
@@ -68,38 +178,24 @@ class AnthropicProvider implements ProviderInterface
         ?string $model,
         callable $onChunk,
     ): void {
-        $settings = CoPilot::getInstance()->getSettings();
-        $apiKey = App::parseEnv($settings->anthropicApiKeyEnvVar);
+        $apiKey = $this->getApiKey();
 
         if (!$apiKey) {
             $onChunk(new StreamChunk('error', error: 'Anthropic API key not configured.'));
             return;
         }
 
-        $model = $model ?? $settings->anthropicModel;
+        $model = $model ?? $this->model;
 
         $payload = [
             'model' => $model,
-            'max_tokens' => 4096,
+            'max_tokens' => 16384,
             'system' => $this->formatSystemPrompt($systemPrompt),
             'messages' => $this->formatMessages($messages),
             'stream' => true,
         ];
 
-        $formattedTools = ToolFormatter::forAnthropic($tools);
-        if ($settings->webSearchEnabled) {
-            $formattedTools[] = [
-                'type' => 'web_search_20260209',
-                'name' => 'web_search',
-                'max_uses' => 3,
-            ];
-            $formattedTools[] = [
-                'type' => 'web_fetch_20260209',
-                'name' => 'web_fetch',
-                'max_uses' => 3,
-            ];
-        }
-
+        $formattedTools = $this->formatTools($tools);
         if (!empty($formattedTools)) {
             $this->applyCacheControl($formattedTools);
             $payload['tools'] = $formattedTools;
@@ -108,56 +204,6 @@ class AnthropicProvider implements ProviderInterface
         Logger::info("Anthropic API stream request: model={$model}");
 
         $this->sendStreamRequest($apiKey, $payload, $onChunk);
-    }
-
-    public function getAvailableModels(): array
-    {
-        return [
-            'claude-opus-4-6',
-            'claude-sonnet-4-6',
-            'claude-opus-4-5-20251101',
-            'claude-sonnet-4-5-20250929',
-        ];
-    }
-
-    public function getTitleModel(): string
-    {
-        return 'claude-sonnet-4-6';
-    }
-
-    public function getName(): string
-    {
-        return 'Anthropic';
-    }
-
-    public function getIcon(): string
-    {
-        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M13.827 3.52h3.603L24 20.48h-3.603l-6.57-16.96zm-7.258 0h3.767L16.906 20.48h-3.674l-1.343-3.461H5.017l-1.344 3.46H0l6.57-16.96zm1.04 3.88L5.2 13.796h4.822L7.609 7.4z"/></svg>';
-    }
-
-    public function validateApiKey(string $key): bool
-    {
-        $client = Craft::createGuzzleClient();
-
-        try {
-            $response = $client->post(self::API_URL, [
-                'headers' => [
-                    'x-api-key' => $key,
-                    'anthropic-version' => self::API_VERSION,
-                    'Content-Type' => 'application/json',
-                ],
-                'json' => [
-                    'model' => 'claude-haiku-4-20250414',
-                    'max_tokens' => 1,
-                    'messages' => [['role' => 'user', 'content' => 'hi']],
-                ],
-                'timeout' => 10,
-            ]);
-
-            return $response->getStatusCode() === 200;
-        } catch (\Throwable) {
-            return false;
-        }
     }
 
     /**
@@ -267,13 +313,11 @@ class AnthropicProvider implements ProviderInterface
 
     /**
      * Adds cache_control to the last user-role message in the formatted array.
-     * For multi-turn agent loops this caches everything up to the latest turn.
      *
      * @param array<int, array<string, mixed>> &$formatted
      */
     private function addMessageCacheBreakpoint(array &$formatted): void
     {
-        // Walk backwards to find the last user message
         for ($i = count($formatted) - 1; $i >= 0; $i--) {
             if (($formatted[$i]['role'] ?? '') !== 'user') {
                 continue;
@@ -281,13 +325,11 @@ class AnthropicProvider implements ProviderInterface
 
             $content = $formatted[$i]['content'];
 
-            // Already an array of content blocks (e.g. tool_result) — mark last block
             if (is_array($content)) {
                 $lastKey = array_key_last($content);
                 $content[$lastKey]['cache_control'] = ['type' => 'ephemeral'];
                 $formatted[$i]['content'] = $content;
             } else {
-                // String content — convert to content block array
                 $formatted[$i]['content'] = [
                     [
                         'type' => 'text',
@@ -378,85 +420,41 @@ class AnthropicProvider implements ProviderInterface
      */
     private function sendStreamRequest(string $apiKey, array $payload, callable $onChunk): void
     {
-        $client = HttpClientFactory::create();
-        $buffer = '';
         /** @var array<string, array{id: string, name: string, input: string}> $toolCalls */
         $toolCalls = [];
         $currentBlockType = null;
         $currentBlockId = null;
-        $currentEvent = null;
         $hasTextContent = false;
         $stopReason = 'unknown';
         $chunksProcessed = 0;
 
-        // Shared line processor for both streaming and buffer flush
-        $processLine = function(string $line) use (&$toolCalls, &$currentBlockType, &$currentBlockId, &$currentEvent, &$hasTextContent, &$stopReason, &$chunksProcessed, $onChunk): void {
-            $line = trim($line);
-            if ($line === '') {
-                return;
-            }
-
-            if (str_starts_with($line, 'event: ')) {
-                $currentEvent = substr($line, 7);
-                return;
-            }
-
-            if (!str_starts_with($line, 'data: ')) {
-                return;
-            }
-
-            $json = json_decode(substr($line, 6), true);
-            if (!is_array($json)) {
-                return;
-            }
-
-            $chunksProcessed++;
-
-            if ($currentEvent === 'message_delta' && isset($json['delta']['stop_reason'])) {
-                $stopReason = $json['delta']['stop_reason'];
-            }
-
-            $this->processAnthropicEvent(
-                $currentEvent,
-                $json,
-                $toolCalls,
-                $currentBlockType,
-                $currentBlockId,
-                $hasTextContent,
-                $onChunk,
-            );
-        };
-
         try {
-            $client->post(self::API_URL, [
-                'headers' => [
+            StreamHelper::stream(
+                HttpClientFactory::create(),
+                self::API_URL,
+                [
                     'x-api-key' => $apiKey,
                     'anthropic-version' => self::API_VERSION,
-                    'Content-Type' => 'application/json',
                 ],
-                'body' => json_encode($payload),
-                'timeout' => 120,
-                'curl' => [
-                    CURLOPT_WRITEFUNCTION => function($ch, $data) use (&$buffer, $processLine) {
-                        $buffer .= $data;
-                        $lines = explode("\n", $buffer);
-                        $buffer = (string)array_pop($lines);
+                $payload,
+                function(string $eventType, array $json) use (&$toolCalls, &$currentBlockType, &$currentBlockId, &$hasTextContent, &$stopReason, &$chunksProcessed, $onChunk): void {
+                    $chunksProcessed++;
 
-                        foreach ($lines as $line) {
-                            $processLine($line);
-                        }
+                    if ($eventType === 'message_delta' && isset($json['delta']['stop_reason'])) {
+                        $stopReason = $json['delta']['stop_reason'];
+                    }
 
-                        return strlen($data);
-                    },
-                ],
-            ]);
-
-            // Flush any remaining buffer data
-            if (trim($buffer) !== '') {
-                Logger::warning('Anthropic stream: flushing unparsed buffer remainder (' . strlen($buffer) . ' bytes)');
-                $processLine($buffer);
-                $buffer = '';
-            }
+                    $this->processAnthropicEvent(
+                        $eventType,
+                        $json,
+                        $toolCalls,
+                        $currentBlockType,
+                        $currentBlockId,
+                        $hasTextContent,
+                        $onChunk,
+                    );
+                },
+            );
 
             $hasText = $hasTextContent ? 'true' : 'false';
 
@@ -466,7 +464,6 @@ class AnthropicProvider implements ProviderInterface
                 Logger::warning("Anthropic stream returned no text and no tool calls: stop_reason={$stopReason}, chunks={$chunksProcessed}");
             }
 
-            // Emit accumulated tool calls after stream completes
             foreach ($toolCalls as $tc) {
                 $onChunk(new StreamChunk(
                     'tool_call',
@@ -550,6 +547,17 @@ class AnthropicProvider implements ProviderInterface
                     ));
                 }
                 break;
+        }
+    }
+
+    private function isWebSearchEnabled(): bool
+    {
+        try {
+            $plugin = CoPilot::getInstance();
+
+            return $plugin !== null && $plugin->getSettings()->webSearchEnabled;
+        } catch (\Throwable) {
+            return false;
         }
     }
 }

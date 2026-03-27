@@ -4,9 +4,9 @@ namespace samuelreichor\coPilot\providers;
 
 use Craft;
 use craft\helpers\App;
-use samuelreichor\coPilot\CoPilot;
 use samuelreichor\coPilot\helpers\HttpClientFactory;
 use samuelreichor\coPilot\helpers\Logger;
+use samuelreichor\coPilot\helpers\StreamHelper;
 use samuelreichor\coPilot\models\AIResponse;
 use samuelreichor\coPilot\models\StreamChunk;
 
@@ -14,20 +14,139 @@ class GeminiProvider implements ProviderInterface
 {
     private const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
+    private const DEFAULT_MODEL = 'gemini-3.1-pro-preview';
+    private const TITLE_MODEL = 'gemini-2.5-flash';
+    private const AVAILABLE_MODELS = [
+        'gemini-3.1-pro-preview',
+        'gemini-3-flash-preview',
+        'gemini-3.1-flash-lite-preview',
+        'gemini-2.5-pro',
+        'gemini-2.5-flash',
+    ];
+
+    private string $apiKeyEnvVar = '';
+
+    private string $model = self::DEFAULT_MODEL;
+
+    public function getHandle(): string
+    {
+        return 'gemini';
+    }
+
+    public function getName(): string
+    {
+        return 'Google Gemini';
+    }
+
+    public function getIcon(): string
+    {
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C12 6.627 6.627 12 0 12c6.627 0 12 5.373 12 12 0-6.627 5.373-12 12-12-6.627 0-12-5.373-12-12z"/></svg>';
+    }
+
+    public function getApiKey(): ?string
+    {
+        $key = App::parseEnv($this->apiKeyEnvVar);
+
+        return $key ?: null;
+    }
+
+    public function getModel(): string
+    {
+        return $this->model;
+    }
+
+    public function getAvailableModels(): array
+    {
+        return self::AVAILABLE_MODELS;
+    }
+
+    public function getTitleModel(): string
+    {
+        return self::TITLE_MODEL;
+    }
+
+    public function validateApiKey(string $key): bool
+    {
+        $client = Craft::createGuzzleClient();
+
+        try {
+            $response = $client->get(self::API_BASE . self::TITLE_MODEL, [
+                'headers' => [
+                    'x-goog-api-key' => $key,
+                ],
+                'timeout' => 10,
+            ]);
+
+            return $response->getStatusCode() === 200;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    public function getDefaultConfig(): array
+    {
+        return [
+            'apiKeyEnvVar' => '',
+            'model' => self::DEFAULT_MODEL,
+        ];
+    }
+
+    public function setConfig(array $config): void
+    {
+        $this->apiKeyEnvVar = $config['apiKeyEnvVar'] ?? '';
+        $this->model = $config['model'] ?? self::DEFAULT_MODEL;
+    }
+
+    public function getSettingsHtml(array $config, array $fileConfig): string
+    {
+        return Craft::$app->getView()->renderTemplate('co-pilot/settings/_provider-fields', [
+            'providerName' => $this->getName(),
+            'handle' => $this->getHandle(),
+            'config' => $config,
+            'fileConfig' => $fileConfig,
+            'models' => $this->getAvailableModels(),
+            'envPlaceholder' => '$GEMINI_API_KEY',
+        ]);
+    }
+
+    public function formatTools(array $tools): array
+    {
+        if (empty($tools)) {
+            return [];
+        }
+
+        return [
+            [
+                'functionDeclarations' => array_map(function(array $tool) {
+                    $declaration = [
+                        'name' => $tool['name'],
+                        'description' => $tool['description'],
+                    ];
+
+                    // Gemini rejects parameterless tools if parameters key is present
+                    if ($this->hasProperties($tool['parameters'])) {
+                        $declaration['parameters'] = $this->sanitizeSchemaForGemini($tool['parameters']);
+                    }
+
+                    return $declaration;
+                }, $tools),
+            ],
+        ];
+    }
+
     public function chat(
         string $systemPrompt,
         array $messages,
         array $tools,
         ?string $model = null,
     ): AIResponse {
-        $settings = CoPilot::getInstance()->getSettings();
-        $apiKey = App::parseEnv($settings->geminiApiKeyEnvVar);
+        $apiKey = $this->getApiKey();
 
         if (!$apiKey) {
-            return AIResponse::error('Gemini API key not configured. Set the environment variable ' . $settings->geminiApiKeyEnvVar);
+            return AIResponse::error('Gemini API key not configured. Set the environment variable ' . $this->apiKeyEnvVar);
         }
 
-        $model = $model ?? $settings->geminiModel;
+        $model = $model ?? $this->model;
         $payload = $this->buildPayload($systemPrompt, $messages, $tools);
 
         Logger::info("Gemini API request: model={$model}");
@@ -42,63 +161,19 @@ class GeminiProvider implements ProviderInterface
         ?string $model,
         callable $onChunk,
     ): void {
-        $settings = CoPilot::getInstance()->getSettings();
-        $apiKey = App::parseEnv($settings->geminiApiKeyEnvVar);
+        $apiKey = $this->getApiKey();
 
         if (!$apiKey) {
             $onChunk(new StreamChunk('error', error: 'Gemini API key not configured.'));
             return;
         }
 
-        $model = $model ?? $settings->geminiModel;
+        $model = $model ?? $this->model;
         $payload = $this->buildPayload($systemPrompt, $messages, $tools);
 
         Logger::info("Gemini API stream request: model={$model}");
 
         $this->sendStreamRequest($apiKey, $model, $payload, $onChunk);
-    }
-
-    public function getAvailableModels(): array
-    {
-        return [
-            'gemini-3.1-pro-preview',
-            'gemini-3-flash-preview',
-            'gemini-2.5-pro',
-            'gemini-2.5-flash',
-        ];
-    }
-
-    public function getTitleModel(): string
-    {
-        return 'gemini-2.5-flash';
-    }
-
-    public function getName(): string
-    {
-        return 'Google Gemini';
-    }
-
-    public function getIcon(): string
-    {
-        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C12 6.627 6.627 12 0 12c6.627 0 12 5.373 12 12 0-6.627 5.373-12 12-12-6.627 0-12-5.373-12-12z"/></svg>';
-    }
-
-    public function validateApiKey(string $key): bool
-    {
-        $client = Craft::createGuzzleClient();
-
-        try {
-            $response = $client->get(self::API_BASE . 'gemini-2.0-flash', [
-                'headers' => [
-                    'x-goog-api-key' => $key,
-                ],
-                'timeout' => 10,
-            ]);
-
-            return $response->getStatusCode() === 200;
-        } catch (\Throwable) {
-            return false;
-        }
     }
 
     /**
@@ -117,7 +192,7 @@ class GeminiProvider implements ProviderInterface
             // empty responses when a token budget is set (known Google issue).
         ];
 
-        $formattedTools = ToolFormatter::forGemini($tools);
+        $formattedTools = $this->formatTools($tools);
         if (!empty($formattedTools)) {
             $payload['tools'] = $formattedTools;
         }
@@ -149,7 +224,7 @@ class GeminiProvider implements ProviderInterface
                         [
                             'functionResponse' => [
                                 'name' => $message['toolName'] ?? 'unknown',
-                                'response' => (object)$responseContent,
+                                'response' => (object) $responseContent,
                             ],
                         ],
                     ],
@@ -179,7 +254,7 @@ class GeminiProvider implements ProviderInterface
                     $parts[] = [
                         'functionCall' => [
                             'name' => $tc['name'],
-                            'args' => (object)($tc['arguments'] ?: []),
+                            'args' => (object) ($tc['arguments'] ?: []),
                         ],
                     ];
                 }
@@ -210,10 +285,6 @@ class GeminiProvider implements ProviderInterface
     /**
      * Ensures rawModelParts are safe to re-send to the Gemini API.
      *
-     * After a DB round-trip, empty JSON objects ({}) become empty PHP arrays ([]).
-     * json_encode([]) produces [] (JSON array), but Gemini's protobuf schema expects
-     * Struct fields (like functionCall.args) to be JSON objects ({}).
-     *
      * @param array<int, array<string, mixed>> $parts
      * @return array<int, array<string, mixed>>
      */
@@ -221,7 +292,7 @@ class GeminiProvider implements ProviderInterface
     {
         foreach ($parts as &$part) {
             if (isset($part['functionCall'])) {
-                $part['functionCall']['args'] = (object)($part['functionCall']['args'] ?? []);
+                $part['functionCall']['args'] = (object) ($part['functionCall']['args'] ?? []);
             }
         }
 
@@ -251,7 +322,7 @@ class GeminiProvider implements ProviderInterface
 
             $response = $e->getResponse();
             if ($response !== null) {
-                $body = (string)$response->getBody();
+                $body = (string) $response->getBody();
                 $errorMsg .= ' | Response: ' . mb_substr($body, 0, 500);
             }
 
@@ -300,16 +371,12 @@ class GeminiProvider implements ProviderInterface
         $finishReason = $candidate['finishReason'] ?? 'unknown';
 
         // Recover from MALFORMED_FUNCTION_CALL: Gemini sometimes generates Python-style
-        // calls like print(default_api.updateEntry(entryId=238, fields={...})) instead of
-        // structured functionCall parts. Parse the text to extract the intended tool call.
-        // The function call may appear in the response text or in the candidate's finishMessage.
+        // calls instead of structured functionCall parts.
         if ($finishReason === 'MALFORMED_FUNCTION_CALL' && empty($toolCalls)) {
             $recoverSource = $text;
 
-            // Also check finishMessage when text is empty (zero-part responses)
             if ($recoverSource === null && isset($candidate['finishMessage'])) {
                 $recoverSource = $candidate['finishMessage'];
-                // Strip "Malformed function call: " prefix if present
                 $prefix = 'Malformed function call: ';
                 if (str_starts_with($recoverSource, $prefix)) {
                     $recoverSource = substr($recoverSource, strlen($prefix));
@@ -350,79 +417,42 @@ class GeminiProvider implements ProviderInterface
      */
     private function sendStreamRequest(string $apiKey, string $model, array $payload, callable $onChunk): void
     {
-        $client = HttpClientFactory::create();
         $url = self::API_BASE . $model . ':streamGenerateContent?alt=sse';
-        $buffer = '';
         $hasTextContent = false;
         $hasToolCalls = false;
         $finishReason = 'unknown';
         $chunksProcessed = 0;
-        /** @var array<int, array<string, mixed>> $rawModelParts Accumulated raw parts for thought signature circulation */
+        /** @var array<int, array<string, mixed>> $rawModelParts */
         $rawModelParts = [];
 
-        // Shared line processor for both streaming and buffer flush
-        $processLine = function(string $line) use (&$hasTextContent, &$hasToolCalls, &$finishReason, &$chunksProcessed, &$rawModelParts, $onChunk): void {
-            $line = trim($line);
-            if ($line === '' || !str_starts_with($line, 'data: ')) {
-                return;
-            }
-
-            $json = json_decode(substr($line, 6), true);
-            if (!is_array($json)) {
-                Logger::warning('Gemini stream: failed to parse JSON from line: ' . mb_substr($line, 0, 200));
-                return;
-            }
-
-            $chunksProcessed++;
-
-            $chunkFinishReason = $json['candidates'][0]['finishReason'] ?? null;
-            if ($chunkFinishReason !== null) {
-                $finishReason = $chunkFinishReason;
-            }
-
-            $parts = $json['candidates'][0]['content']['parts'] ?? [];
-            foreach ($parts as $part) {
-                if (isset($part['text']) && $part['text'] !== '') {
-                    $hasTextContent = true;
-                }
-                if (isset($part['functionCall'])) {
-                    $hasToolCalls = true;
-                }
-                $rawModelParts[] = $part;
-            }
-
-            $this->processGeminiStreamChunk($json, $onChunk);
-        };
-
         try {
-            $client->post($url, [
-                'headers' => [
-                    'Content-Type' => 'application/json',
-                    'x-goog-api-key' => $apiKey,
-                ],
-                'body' => json_encode($payload),
-                'timeout' => 120,
-                'curl' => [
-                    CURLOPT_WRITEFUNCTION => function($ch, $data) use (&$buffer, $processLine) {
-                        $buffer .= $data;
-                        $lines = explode("\n", $buffer);
-                        $buffer = (string)array_pop($lines);
+            StreamHelper::stream(
+                HttpClientFactory::create(),
+                $url,
+                ['x-goog-api-key' => $apiKey],
+                $payload,
+                function(string $eventType, array $json) use (&$hasTextContent, &$hasToolCalls, &$finishReason, &$chunksProcessed, &$rawModelParts, $onChunk): void {
+                    $chunksProcessed++;
 
-                        foreach ($lines as $line) {
-                            $processLine($line);
+                    $chunkFinishReason = $json['candidates'][0]['finishReason'] ?? null;
+                    if ($chunkFinishReason !== null) {
+                        $finishReason = $chunkFinishReason;
+                    }
+
+                    $parts = $json['candidates'][0]['content']['parts'] ?? [];
+                    foreach ($parts as $part) {
+                        if (isset($part['text']) && $part['text'] !== '') {
+                            $hasTextContent = true;
                         }
+                        if (isset($part['functionCall'])) {
+                            $hasToolCalls = true;
+                        }
+                        $rawModelParts[] = $part;
+                    }
 
-                        return strlen($data);
-                    },
-                ],
-            ]);
-
-            // Flush any remaining buffer data
-            if (trim($buffer) !== '') {
-                Logger::warning('Gemini stream: flushing unparsed buffer remainder (' . strlen($buffer) . ' bytes)');
-                $processLine($buffer);
-                $buffer = '';
-            }
+                    $this->processGeminiStreamChunk($json, $onChunk);
+                },
+            );
 
             $hasText = $hasTextContent ? 'true' : 'false';
             $hasTools = $hasToolCalls ? 'true' : 'false';
@@ -442,7 +472,7 @@ class GeminiProvider implements ProviderInterface
 
             $response = $e->getResponse();
             if ($response !== null) {
-                $body = (string)$response->getBody();
+                $body = (string) $response->getBody();
                 $errorMsg .= ' | Response: ' . mb_substr($body, 0, 500);
             }
 
@@ -530,7 +560,6 @@ class GeminiProvider implements ProviderInterface
         $len = strlen($input);
 
         while ($pos < $len) {
-            // Skip whitespace and commas
             while ($pos < $len && ($input[$pos] === ' ' || $input[$pos] === ',' || $input[$pos] === "\n" || $input[$pos] === "\t")) {
                 $pos++;
             }
@@ -538,7 +567,6 @@ class GeminiProvider implements ProviderInterface
                 break;
             }
 
-            // Read key (word characters before =)
             $keyStart = $pos;
             while ($pos < $len && ctype_alnum($input[$pos]) || ($pos < $len && $input[$pos] === '_')) {
                 $pos++;
@@ -547,9 +575,8 @@ class GeminiProvider implements ProviderInterface
             if ($key === '' || $pos >= $len || $input[$pos] !== '=') {
                 return null;
             }
-            $pos++; // skip =
+            $pos++;
 
-            // Read value with depth tracking for nested structures
             $valueStart = $pos;
             $depth = 0;
             $inString = false;
@@ -560,7 +587,7 @@ class GeminiProvider implements ProviderInterface
 
                 if ($inString) {
                     if ($ch === '\\' && $pos + 1 < $len) {
-                        $pos++; // skip escaped char
+                        $pos++;
                     } elseif ($ch === $stringChar) {
                         $inString = false;
                     }
@@ -614,5 +641,51 @@ class GeminiProvider implements ProviderInterface
         }
 
         return trim($value, "\"'");
+    }
+
+    /**
+     * Checks whether a tool parameter schema has actual properties defined.
+     *
+     * @param array<string, mixed> $parameters
+     */
+    private function hasProperties(array $parameters): bool
+    {
+        $properties = $parameters['properties'] ?? null;
+
+        if ($properties instanceof \stdClass) {
+            return (array) $properties !== [];
+        }
+
+        return is_array($properties) && $properties !== [];
+    }
+
+    /**
+     * Ensures all properties in a schema have a `type` field.
+     * Gemini rejects schemas with typeless properties (returns 400).
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function sanitizeSchemaForGemini(array $schema): array
+    {
+        if (!isset($schema['properties']) || !is_array($schema['properties'])) {
+            return $schema;
+        }
+
+        foreach ($schema['properties'] as $key => $prop) {
+            if (!is_array($prop)) {
+                continue;
+            }
+
+            if (!isset($prop['type'])) {
+                $schema['properties'][$key]['type'] = 'string';
+            }
+
+            if (($prop['type'] ?? $schema['properties'][$key]['type'] ?? '') === 'object' && isset($prop['properties'])) {
+                $schema['properties'][$key] = $this->sanitizeSchemaForGemini($prop);
+            }
+        }
+
+        return $schema;
     }
 }
