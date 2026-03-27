@@ -98,10 +98,16 @@ class AgentService extends Component
         $executedToolCalls = [];
 
         $maxIterations = $plugin->getSettings()->maxAgentIterations;
+        $timeLimit = (int) ini_get('max_execution_time');
 
         // Agent loop: call provider, execute tools, repeat until text response or max iterations
         while ($iteration < $maxIterations) {
             $iteration++;
+
+            // Reset PHP execution time limit per iteration to prevent timeouts during long agent loops
+            if ($timeLimit > 0 && function_exists('set_time_limit')) {
+                set_time_limit($timeLimit);
+            }
 
             Logger::info("Agent loop iteration {$iteration}/{$maxIterations}, sending " . count($messages) . ' messages to provider');
 
@@ -243,9 +249,15 @@ class AgentService extends Component
         $hasFallenBack = false;
         $hadStreamError = false;
         $maxIterations = $settings->maxAgentIterations;
+        $timeLimit = (int) ini_get('max_execution_time');
 
         while ($iteration < $maxIterations) {
             $iteration++;
+
+            // Reset PHP execution time limit per iteration to prevent timeouts during long agent loops
+            if ($timeLimit > 0 && function_exists('set_time_limit')) {
+                set_time_limit($timeLimit);
+            }
 
             Logger::info("Agent stream loop iteration {$iteration}/{$maxIterations}, sending " . count($messages) . ' messages to provider');
 
@@ -538,12 +550,11 @@ class AgentService extends Component
         int $iterations,
         int $historyCount,
     ): array {
-        $modelProperty = $settings->defaultProvider . 'Model';
-        $defaultModel = property_exists($settings, $modelProperty) ? $settings->$modelProperty : null;
+        $provider = CoPilot::getInstance()->providerService->getActiveProvider();
 
         return [
             'systemPrompt' => $systemPrompt,
-            'model' => $model ?? $defaultModel,
+            'model' => $model ?? $provider->getModel(),
             'provider' => $settings->defaultProvider,
             'messages' => array_values(array_slice($messages, $historyCount)),
             'iterations' => $iterations,
