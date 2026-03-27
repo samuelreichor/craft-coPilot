@@ -33,6 +33,9 @@ import SlideoutApp from './SlideoutApp.vue';
           canCreateChat: true, // Slideout only renders when createChat permission exists
           canDeleteOwn: perms?.deleteChat ?? false,
           canDeleteOthers: perms?.deleteOtherUsersChats ?? false,
+          canChangeExecutionMode: perms?.changeExecutionMode ?? false,
+          canChangeProvider: perms?.changeProvider ?? false,
+          canChangeModel: perms?.changeModel ?? false,
         });
         vueInstance = app.mount(mountEl) as InstanceType<typeof SlideoutApp>;
       }

@@ -7,6 +7,7 @@ defineProps<{
   providers: ProviderInfo[];
   currentProvider: string;
   canCreateChat?: boolean;
+  canChangeProvider?: boolean;
 }>();
 
 defineEmits<{
@@ -28,7 +29,7 @@ defineEmits<{
     >
       {{ isExporting ? 'Exporting...' : 'Export Debug' }}
     </button>
-    <div v-if="providers.length > 1" class="select">
+    <div v-if="canChangeProvider !== false && providers.length > 1" class="select">
       <select
         :value="currentProvider"
         @change="

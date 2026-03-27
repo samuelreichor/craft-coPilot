@@ -42,13 +42,13 @@ interface Window {
     siteHandle?: string | null;
     executionMode?: string | null;
     currentUserId?: number | null;
-    permissions?: { createChat?: boolean; deleteChat?: boolean; deleteOtherUsersChats?: boolean; editOtherUsersChats?: boolean };
+    permissions?: { createChat?: boolean; deleteChat?: boolean; deleteOtherUsersChats?: boolean; editOtherUsersChats?: boolean; changeExecutionMode?: boolean; changeProvider?: boolean; changeModel?: boolean };
   };
   __coPilotEntryId?: number | null;
   __coPilotSiteHandle?: string | null;
   __coPilotExecutionMode?: string | null;
   __coPilotCurrentUserId?: number | null;
-  __coPilotPermissions?: { deleteChat?: boolean; editOtherUsersChats?: boolean; deleteOtherUsersChats?: boolean };
+  __coPilotPermissions?: { deleteChat?: boolean; editOtherUsersChats?: boolean; deleteOtherUsersChats?: boolean; changeExecutionMode?: boolean; changeProvider?: boolean; changeModel?: boolean };
   coPilotApp?: {
     openWithContext: (entryId: number) => void;
   };

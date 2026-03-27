@@ -12,6 +12,8 @@ const props = withDefaults(defineProps<ChatPanelProps & {
   executionMode?: string;
   provider?: string;
   readonly?: boolean;
+  canChangeExecutionMode?: boolean;
+  canChangeModel?: boolean;
 }>(), {
   contextId: null,
   initialConversationId: null,
@@ -22,6 +24,8 @@ const props = withDefaults(defineProps<ChatPanelProps & {
   executionMode: 'supervised',
   provider: '',
   readonly: false,
+  canChangeExecutionMode: true,
+  canChangeModel: true,
 });
 
 const emit = defineEmits<{
@@ -100,6 +104,8 @@ defineExpose({
       :current-model="model"
       :execution-mode="executionMode"
       :readonly="readonly"
+      :can-change-execution-mode="canChangeExecutionMode"
+      :can-change-model="canChangeModel"
       @send="(text, atts) => handleSend(text, atts)"
       @cancel="chat.cancel()"
       @add-attachment="chat.addAttachment($event)"

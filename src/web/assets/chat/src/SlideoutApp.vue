@@ -16,6 +16,9 @@ const props = defineProps<{
   canCreateChat?: boolean;
   canDeleteOwn?: boolean;
   canDeleteOthers?: boolean;
+  canChangeExecutionMode?: boolean;
+  canChangeProvider?: boolean;
+  canChangeModel?: boolean;
 }>();
 
 const activeExecutionMode = ref(props.executionMode || 'supervised');
@@ -179,7 +182,7 @@ defineExpose({ loadHistory, focusInput });
           </div>
         </div>
       </div>
-      <div v-if="providers.length > 1" class="select">
+      <div v-if="canChangeProvider !== false && providers.length > 1" class="select">
         <select
           :value="currentProvider"
           @change="switchProvider(($event.target as HTMLSelectElement).value)"
@@ -222,6 +225,8 @@ defineExpose({ loadHistory, focusInput });
       :provider="currentProvider"
       :execution-mode="activeExecutionMode"
       :readonly="isReadonly"
+      :can-change-execution-mode="canChangeExecutionMode !== false"
+      :can-change-model="canChangeModel !== false"
       @conversation-created="onConversationCreated"
       @update:model="currentModel = $event"
       @update:execution-mode="activeExecutionMode = $event"

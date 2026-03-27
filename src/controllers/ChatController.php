@@ -69,6 +69,9 @@ class ChatController extends Controller
             'deleteChat' => $user->checkPermission(Constants::PERMISSION_DELETE_CHAT),
             'deleteOtherUsersChats' => $user->checkPermission(Constants::PERMISSION_DELETE_OTHER_USERS_CHATS),
             'editOtherUsersChats' => $user->checkPermission(Constants::PERMISSION_EDIT_OTHER_USERS_CHATS),
+            'changeExecutionMode' => $user->checkPermission(Constants::PERMISSION_CHANGE_EXECUTION_MODE),
+            'changeProvider' => $user->checkPermission(Constants::PERMISSION_CHANGE_PROVIDER),
+            'changeModel' => $user->checkPermission(Constants::PERMISSION_CHANGE_MODEL),
         ];
 
         return $this->renderTemplate('co-pilot/chat/index', [

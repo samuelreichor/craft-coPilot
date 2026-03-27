@@ -239,6 +239,15 @@ class CoPilot extends Plugin
                                         ],
                                     ],
                                 ],
+                                Constants::PERMISSION_CHANGE_EXECUTION_MODE => [
+                                    'label' => 'Change Execution Mode',
+                                ],
+                                Constants::PERMISSION_CHANGE_PROVIDER => [
+                                    'label' => 'Change Provider',
+                                ],
+                                Constants::PERMISSION_CHANGE_MODEL => [
+                                    'label' => 'Change Model',
+                                ],
                             ],
                         ],
                         Constants::PERMISSION_VIEW_BRAND_VOICE => [
@@ -287,6 +296,9 @@ class CoPilot extends Plugin
                     'deleteChat' => $user->can(Constants::PERMISSION_DELETE_CHAT),
                     'editOtherUsersChats' => $user->can(Constants::PERMISSION_EDIT_OTHER_USERS_CHATS),
                     'deleteOtherUsersChats' => $user->can(Constants::PERMISSION_DELETE_OTHER_USERS_CHATS),
+                    'changeExecutionMode' => $user->can(Constants::PERMISSION_CHANGE_EXECUTION_MODE),
+                    'changeProvider' => $user->can(Constants::PERMISSION_CHANGE_PROVIDER),
+                    'changeModel' => $user->can(Constants::PERMISSION_CHANGE_MODEL),
                 ];
 
                 $event->html .= Craft::$app->getView()->renderTemplate(

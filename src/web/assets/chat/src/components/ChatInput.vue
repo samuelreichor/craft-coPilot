@@ -18,6 +18,8 @@ const props = defineProps<{
   currentModel?: string;
   executionMode?: string;
   readonly?: boolean;
+  canChangeExecutionMode?: boolean;
+  canChangeModel?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -419,7 +421,7 @@ defineExpose({ focus });
             </button>
           </div>
         </div>
-        <div v-if="!compact" class="co-pilot-input__mode-select select">
+        <div v-if="!compact && canChangeExecutionMode !== false" class="co-pilot-input__mode-select select">
           <select
             :value="executionMode || 'supervised'"
             @change="
@@ -436,7 +438,7 @@ defineExpose({ focus });
       </div>
       <div class="co-pilot-input__toolbar-right">
         <div
-          v-if="!compact && props.models && props.models.length > 0"
+          v-if="!compact && canChangeModel !== false && props.models && props.models.length > 0"
           class="co-pilot-input__model-select select"
         >
           <select

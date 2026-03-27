@@ -20,6 +20,9 @@ final class Constants
     public const PERMISSION_VIEW_OTHER_USERS_CHATS = 'copilot-viewOtherUsersChats';
     public const PERMISSION_EDIT_OTHER_USERS_CHATS = 'copilot-editOtherUsersChats';
     public const PERMISSION_DELETE_OTHER_USERS_CHATS = 'copilot-deleteOtherUsersChats';
+    public const PERMISSION_CHANGE_EXECUTION_MODE = 'copilot-changeExecutionMode';
+    public const PERMISSION_CHANGE_PROVIDER = 'copilot-changeProvider';
+    public const PERMISSION_CHANGE_MODEL = 'copilot-changeModel';
 
     // Permission Keys — Brand Voice
     public const PERMISSION_VIEW_BRAND_VOICE = 'copilot-viewBrandVoice';
