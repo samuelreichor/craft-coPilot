@@ -10,11 +10,13 @@ use craft\models\FieldLayout;
 use samuelreichor\coPilot\constants\Constants;
 use samuelreichor\coPilot\events\RegisterElementTransformersEvent;
 use samuelreichor\coPilot\events\RegisterFieldTransformersEvent;
+use samuelreichor\coPilot\helpers\PluginHelper;
 use samuelreichor\coPilot\transformers\elements\AssetTransformer;
 use samuelreichor\coPilot\transformers\elements\ElementTransformerInterface;
 use samuelreichor\coPilot\transformers\elements\EntryTransformer;
 use samuelreichor\coPilot\transformers\fields\ComplexFieldTransformer;
 use samuelreichor\coPilot\transformers\fields\FieldTransformerInterface;
+use samuelreichor\coPilot\transformers\fields\LlmifyFieldTransformer;
 use samuelreichor\coPilot\transformers\fields\OptionsFieldTransformer;
 use samuelreichor\coPilot\transformers\fields\RelationalFieldTransformer;
 use samuelreichor\coPilot\transformers\fields\RichTextFieldTransformer;
@@ -153,13 +155,19 @@ class TransformerRegistry extends Component
      */
     private function getBuiltInFieldTransformers(): array
     {
-        return [
-            new ScalarFieldTransformer(),
-            new OptionsFieldTransformer(),
-            new RichTextFieldTransformer(),
-            new RelationalFieldTransformer(),
-            new ComplexFieldTransformer(),
-        ];
+        $transformers = [];
+
+        if (PluginHelper::isPluginInstalledAndEnabled('llmify')) {
+            $transformers[] = new LlmifyFieldTransformer();
+        }
+
+        $transformers[] = new ScalarFieldTransformer();
+        $transformers[] = new OptionsFieldTransformer();
+        $transformers[] = new RichTextFieldTransformer();
+        $transformers[] = new RelationalFieldTransformer();
+        $transformers[] = new ComplexFieldTransformer();
+
+        return $transformers;
     }
 
     /**
