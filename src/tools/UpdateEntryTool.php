@@ -57,8 +57,8 @@ class UpdateEntryTool extends AbstractEntryUpdateTool
 
         if ($fields === null) {
             return [
-                'error' => 'The "fields" parameter must be a non-empty object.',
-                'retryHint' => 'Provide at least one field handle with a value in the "fields" object.',
+                'error' => 'The "fields" parameter must be a non-empty object. Received keys: ' . implode(', ', array_keys($arguments)),
+                'retryHint' => 'You MUST include a "fields" object with at least one field handle. Example: {"entryId": 123, "fields": {"title": "New Title"}}. Do NOT put field values at the top level.',
             ];
         }
 

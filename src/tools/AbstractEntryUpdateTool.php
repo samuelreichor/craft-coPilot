@@ -536,6 +536,10 @@ abstract class AbstractEntryUpdateTool implements ToolInterface
             return ['error' => "Entry #{$entryId} not found.", 'retryHint' => null];
         }
 
+        if ($sourceEntry->getOwnerId() !== null) {
+            return $this->buildNestedBlockError($sourceEntry, $entryId);
+        }
+
         $section = $sourceEntry->getSection();
         if (!$section) {
             return ['error' => "Entry #{$entryId} has no section.", 'retryHint' => null];
