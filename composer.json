@@ -3,7 +3,7 @@
   "description": "AI Agent plugin for Craft CMS that can understand and edit your content.",
   "type": "craft-plugin",
   "license": "proprietary",
-  "version": "0.0.0-RC8",
+  "version": "1.0.0",
   "support": {
     "email": "samuelreichor@gmail.com",
     "issues": "https://github.com/samuelreichor/craft-co-pilot/issues?state=open",
