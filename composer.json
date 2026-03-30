@@ -35,7 +35,7 @@
     "handle": "co-pilot",
     "name": "coPilot",
     "developer": "Samuel Reichör",
-    "documentationUrl": "https://github.com/samuelreichor/craft-co-pilot",
+    "documentationUrl": "https://samuelreichor.at/libraries/craft-co-pilot",
     "class": "samuelreichor\\coPilot\\CoPilot"
   },
   "scripts": {

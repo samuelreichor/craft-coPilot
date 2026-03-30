@@ -1,6 +1,6 @@
 import type { Ref } from 'vue';
 
-const GITHUB_ISSUES_URL = 'https://github.com/samuelreichor/craft-coPilot/issues/new';
+const GITHUB_ISSUES_URL = 'https://github.com/samuelreichor/craft-co-pilot/issues/new';
 const MAX_URL_LENGTH = 8192;
 
 interface CommandHandlerOptions {
