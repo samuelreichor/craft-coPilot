@@ -14,7 +14,7 @@ use samuelreichor\coPilot\enums\SectionAccess;
 class Settings extends Model
 {
     // Provider settings
-    public string $defaultProvider = 'openai';
+    public string $defaultProvider = '';
 
     /**
      * Generic provider configuration, keyed by provider handle.
@@ -97,7 +97,7 @@ class Settings extends Model
     public function defineRules(): array
     {
         return [
-            [['defaultProvider', 'pluginName'], 'required'],
+            [['pluginName'], 'required'],
             ['pluginName', 'string', 'max' => 50],
             ['defaultProvider', 'string'],
             ['maxAgentIterations', 'integer', 'min' => 1, 'max' => 200],

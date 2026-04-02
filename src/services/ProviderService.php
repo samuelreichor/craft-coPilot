@@ -3,6 +3,7 @@
 namespace samuelreichor\coPilot\services;
 
 use craft\base\Component;
+use InvalidArgumentException;
 use samuelreichor\coPilot\CoPilot;
 use samuelreichor\coPilot\events\RegisterProvidersEvent;
 use samuelreichor\coPilot\providers\AnthropicProvider;
@@ -23,11 +24,22 @@ class ProviderService extends Component
     public function getActiveProvider(?string $handle = null): ProviderInterface
     {
         $settings = CoPilot::getInstance()->getSettings();
-        $providers = $this->getProviders();
         $providerHandle = $handle ?? $settings->defaultProvider;
 
-        return $providers[$providerHandle]
-            ?? throw new \RuntimeException("Provider '{$providerHandle}' not found.");
+        if ($providerHandle !== '' && $providerHandle !== null) {
+            $providers = $this->getProviders();
+            if (isset($providers[$providerHandle])) {
+                return $providers[$providerHandle];
+            }
+        }
+
+        // Fall back to the first configured provider
+        $configured = $this->getConfiguredProviders();
+        if ($configured !== []) {
+            return reset($configured);
+        }
+
+        throw new \RuntimeException('No AI provider with a valid API key is configured.');
     }
 
     public function getProvider(string $handle): ?ProviderInterface
@@ -36,7 +48,7 @@ class ProviderService extends Component
     }
 
     /**
-     * Returns providers that have an API key configured.
+     * Returns providers that have an API key configured and available models.
      *
      * @return array<string, ProviderInterface>
      */
@@ -44,7 +56,7 @@ class ProviderService extends Component
     {
         $configured = [];
         foreach ($this->getProviders() as $handle => $provider) {
-            if ($provider->getApiKey() !== null) {
+            if ($provider->getApiKey() !== null && $provider->getAvailableModels() !== []) {
                 $configured[$handle] = $provider;
             }
         }
@@ -75,6 +87,11 @@ class ProviderService extends Component
         // Apply stored configuration to each provider
         $settings = CoPilot::getInstance()->getSettings();
         foreach ($event->providers as $handle => $provider) {
+            if (!$provider instanceof ProviderInterface) {
+                throw new InvalidArgumentException(
+                    "Provider '{$handle}' must implement " . ProviderInterface::class
+                );
+            }
             $config = $settings->getProviderConfig($handle);
             if (!empty($config)) {
                 $provider->setConfig($config);

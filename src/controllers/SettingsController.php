@@ -23,9 +23,10 @@ class SettingsController extends Controller
 
         $plugin = CoPilot::getInstance();
         $providers = $plugin->providerService->getProviders();
+        $configuredProviders = $plugin->providerService->getConfiguredProviders();
 
         $providerOptions = [];
-        foreach ($providers as $handle => $provider) {
+        foreach ($configuredProviders as $handle => $provider) {
             $providerOptions[] = ['label' => $provider->getName(), 'value' => $handle];
         }
 

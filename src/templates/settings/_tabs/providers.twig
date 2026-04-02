@@ -1,17 +1,25 @@
 {% import '_includes/forms.twig' as forms %}
 {% from 'co-pilot/settings/_macros' import configWarning %}
 
-    {{ forms.selectField({
-        label: 'Default Provider',
-        instructions: 'Select the default AI provider.',
-        id: 'defaultProvider',
-        name: 'defaultProvider',
-        value: settings.defaultProvider,
-        options: providerOptions,
-        disabled: config.defaultProvider is defined,
-        warning: config.defaultProvider is defined ? configWarning('defaultProvider'),
-        errors: settings.getErrors('defaultProvider'),
-    }) }}
+    {% if providerOptions|length %}
+        {{ forms.selectField({
+            label: 'Default Provider',
+            instructions: 'Select the default AI provider.',
+            id: 'defaultProvider',
+            name: 'defaultProvider',
+            value: settings.defaultProvider,
+            options: providerOptions,
+            disabled: config.defaultProvider is defined,
+            warning: config.defaultProvider is defined ? configWarning('defaultProvider'),
+            errors: settings.getErrors('defaultProvider'),
+        }) }}
+    {% else %}
+        <div class="field">
+            <div class="heading"><label>Default Provider</label></div>
+            <div class="instructions"><p>Select the default AI provider.</p></div>
+            <p class="light">No providers available. Configure your API key and save to enable providers.</p>
+        </div>
+    {% endif %}
 
     {% for handle, provider in providers %}
         {% set html = provider.getSettingsHtml(

@@ -112,12 +112,15 @@ class ChatController extends Controller
 
         $providers = [];
         foreach ($configuredProviders as $handle => $provider) {
-            $providers[] = [
-                'handle' => $handle,
-                'name' => $provider->getName(),
-                'models' => $provider->getAvailableModels(),
-                'defaultModel' => $provider->getModel(),
-            ];
+            $models = $provider->getAvailableModels();
+            if ($models) {
+                $providers[] = [
+                    'handle' => $handle,
+                    'name' => $provider->getName(),
+                    'models' => $models,
+                    'defaultModel' => $provider->getModel(),
+                ];
+            }
         }
 
         return $this->asJson([
