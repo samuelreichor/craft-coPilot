@@ -1,5 +1,9 @@
 # Release Notes for coPilot
 
+## 1.0.4 - 2026-05-22
+
+- Prevent errors in entries when no api key is configured
+
 ## 1.0.3 - 2026-04-21
 
 - Add support for opus 4.7
