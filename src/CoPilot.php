@@ -288,6 +288,10 @@ class CoPilot extends Plugin
                     return;
                 }
 
+                if ($this->providerService->getConfiguredProviders() === []) {
+                    return;
+                }
+
                 Craft::$app->getView()->registerAssetBundle(SlideoutAsset::class);
 
                 $icon = $this->providerService->getActiveProvider()->getIcon();
