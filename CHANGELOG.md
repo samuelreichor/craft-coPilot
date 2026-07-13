@@ -1,5 +1,11 @@
 # Release Notes for coPilot
 
+## 1.0.5 - 2026-07-13
+
+- Add support for Opus 4.8, Sonnet 5 and Fable 5 to Anthropic provider.
+- Add support for GPT 5.6 Sol and GPT 5.5 to OpenAi provider.
+- Add support for Gemini 3.5 Flash to Gemini provider.
+
 ## 1.0.4 - 2026-05-22
 
 - Prevent errors in entries when no api key is configured
