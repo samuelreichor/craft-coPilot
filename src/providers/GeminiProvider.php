@@ -14,12 +14,13 @@ class GeminiProvider implements ProviderInterface
 {
     private const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
-    private const DEFAULT_MODEL = 'gemini-3.1-pro-preview';
+    private const DEFAULT_MODEL = 'gemini-3.5-flash';
     private const TITLE_MODEL = 'gemini-2.5-flash';
     private const AVAILABLE_MODELS = [
+        'gemini-3.5-flash',
         'gemini-3.1-pro-preview',
+        'gemini-3.1-flash-lite',
         'gemini-3-flash-preview',
-        'gemini-3.1-flash-lite-preview',
         'gemini-2.5-pro',
         'gemini-2.5-flash',
     ];

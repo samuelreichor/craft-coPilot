@@ -16,11 +16,14 @@ class AnthropicProvider implements ProviderInterface
     private const API_URL = 'https://api.anthropic.com/v1/messages';
     private const API_VERSION = '2023-06-01';
 
-    private const DEFAULT_MODEL = 'claude-opus-4-7';
+    private const DEFAULT_MODEL = 'claude-opus-4-8';
     private const TITLE_MODEL = 'claude-sonnet-4-6';
     private const AVAILABLE_MODELS = [
+        'claude-fable-5',
+        'claude-opus-4-8',
         'claude-opus-4-7',
         'claude-opus-4-6',
+        'claude-sonnet-5',
         'claude-sonnet-4-6',
     ];
 
