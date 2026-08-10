@@ -350,7 +350,7 @@ class ChatController extends Controller
 
         $messages = [];
         if ($conversationId) {
-            $conversation = $this->getConversation((int)$conversationId);
+            $conversation = $this->getConversation((int)$conversationId, forEdit: true);
             $messages = $conversation->messages;
         }
 
@@ -459,7 +459,15 @@ class ChatController extends Controller
 
         $messages = [];
         if ($conversationId) {
-            $conversation = $this->getConversation((int)$conversationId);
+            // SSE headers are already sent, so surface access errors as an SSE
+            // event instead of letting the exception render an HTML error page.
+            try {
+                $conversation = $this->getConversation((int)$conversationId, forEdit: true);
+            } catch (\Throwable $e) {
+                $this->sendSSE('error', ['message' => $e->getMessage()]);
+                $this->endSSE();
+                return;
+            }
             $messages = $conversation->messages;
         }
 
@@ -570,10 +578,14 @@ class ChatController extends Controller
     }
 
     /**
+     * Loads a conversation and checks access. Pass $forEdit when the caller
+     * appends to or rewrites the conversation — editing someone else's
+     * conversation requires an extra permission on top of viewing it.
+     *
      * @throws NotFoundHttpException
      * @throws ForbiddenHttpException|\Throwable
      */
-    private function getConversation(int $id): Conversation
+    private function getConversation(int $id, bool $forEdit = false): Conversation
     {
         $conversation = CoPilot::getInstance()->conversationService->getById($id);
         if ($conversation === null) {
@@ -587,6 +599,10 @@ class ChatController extends Controller
 
         if ($conversation->userId !== $user->id) {
             $this->requirePermission(Constants::PERMISSION_VIEW_OTHER_USERS_CHATS);
+
+            if ($forEdit) {
+                $this->requirePermission(Constants::PERMISSION_EDIT_OTHER_USERS_CHATS);
+            }
         }
 
         return $conversation;
@@ -740,7 +756,7 @@ class ChatController extends Controller
         $this->requireAcceptsJson();
 
         $id = $this->request->getRequiredBodyParam('id');
-        $conversation = $this->getConversation((int)$id);
+        $conversation = $this->getConversation((int)$id, forEdit: true);
 
         if (empty($conversation->messages)) {
             return $this->asJson(['success' => false, 'error' => 'No messages to compact.']);
