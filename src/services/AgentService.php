@@ -168,6 +168,8 @@ class AgentService extends Component
 
         $maxIterations = $settings->maxAgentIterations;
         $timeLimit = (int) ini_get('max_execution_time');
+        $startedAt = microtime(true);
+        $stopText = null;
 
         $finalize = function(?string $text) use (&$messages, &$executedToolCalls, &$totalInputTokens, &$totalOutputTokens, &$iteration, $systemPrompt, $model, $provider, $providerHandle, $settings, $historyCount): array {
             return [
@@ -180,11 +182,30 @@ class AgentService extends Component
             ];
         };
 
-        // Agent loop: call provider, execute tools, repeat until text response or max iterations
+        // Agent loop: call provider, execute tools, repeat until text response
+        // or until an iteration, wall-clock, or token budget is exhausted
         while ($iteration < $maxIterations) {
+            $elapsed = (int)(microtime(true) - $startedAt);
+            if ($elapsed >= $settings->maxAgentSeconds) {
+                Logger::warning("Agent loop stopped: wall-clock budget of {$settings->maxAgentSeconds}s used up after {$iteration} iterations");
+                $stopText = 'I stopped because the time budget for this request was used up. '
+                    . 'All completed work is saved — send a follow-up message to continue.';
+                break;
+            }
+
+            $totalTokens = (int)$totalInputTokens + (int)$totalOutputTokens;
+            if ($settings->maxTokensPerRequest > 0 && $totalTokens >= $settings->maxTokensPerRequest) {
+                Logger::warning("Agent loop stopped: token budget of {$settings->maxTokensPerRequest} used up ({$totalTokens} tokens after {$iteration} iterations)");
+                $stopText = 'I stopped because the token budget for this request was used up. '
+                    . 'All completed work is saved — send a follow-up message to continue.';
+                break;
+            }
+
             $iteration++;
 
-            // Reset PHP execution time limit per iteration to prevent timeouts during long agent loops
+            // Reset PHP execution time limit per iteration so an iteration is
+            // never killed mid-flight; the wall-clock budget above bounds the
+            // total runtime.
             if ($timeLimit > 0 && function_exists('set_time_limit')) {
                 set_time_limit($timeLimit);
             }
@@ -286,14 +307,14 @@ class AgentService extends Component
             }
         }
 
-        $maxIterText = 'The AI reached the maximum number of tool call iterations. Please try a simpler request.';
-        $this->emitTo($emit, 'text_delta', ['delta' => $maxIterText]);
+        $stopText ??= 'The AI reached the maximum number of tool call iterations. Please try a simpler request.';
+        $this->emitTo($emit, 'text_delta', ['delta' => $stopText]);
         $messages[] = [
             'role' => MessageRole::Assistant->value,
-            'content' => $maxIterText,
+            'content' => $stopText,
         ];
 
-        return $finalize($maxIterText);
+        return $finalize($stopText);
     }
 
     /**

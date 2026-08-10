@@ -79,6 +79,18 @@ class Settings extends Model
     // Agent behavior
     public string $agentExecutionMode = 'supervised';
     public int $maxAgentIterations = 50;
+
+    /**
+     * Wall-clock budget for a single agent request in seconds. The loop stops
+     * gracefully before starting an iteration once the budget is used up.
+     */
+    public int $maxAgentSeconds = 300;
+
+    /**
+     * Total token budget (input + output) for a single agent request.
+     * 0 disables the check.
+     */
+    public int $maxTokensPerRequest = 0;
     public int $defaultSerializationDepth = 3;
     public int $maxSerializationDepth = 4;
     public int $maxContextTokens = 200000;
@@ -101,6 +113,8 @@ class Settings extends Model
             ['pluginName', 'string', 'max' => 50],
             ['defaultProvider', 'string'],
             ['maxAgentIterations', 'integer', 'min' => 1, 'max' => 200],
+            ['maxAgentSeconds', 'integer', 'min' => 30, 'max' => 3600],
+            ['maxTokensPerRequest', 'integer', 'min' => 0],
             ['defaultSerializationDepth', 'integer', 'min' => 1, 'max' => 10],
             ['maxSerializationDepth', 'integer', 'min' => 1, 'max' => 10],
             ['maxContextTokens', 'integer', 'min' => 1000, 'max' => 1000000],
