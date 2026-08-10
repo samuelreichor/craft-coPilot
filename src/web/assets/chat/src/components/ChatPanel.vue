@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import type { Attachment, ChatPanelProps, UIMessage } from '../types';
+import type { Attachment, ChatPanelProps, PendingToolCall, UIMessage } from '../types';
 import { useChat } from '../composables/useChat';
 import MessageList from './MessageList.vue';
 import ChatInput from './ChatInput.vue';
@@ -54,6 +54,19 @@ function handleSend(text: string, extraAttachments?: Attachment[]) {
   chat.sendMessage(text, props.model || undefined, props.executionMode || undefined, props.provider || undefined);
 }
 
+function handleApproval(approved: boolean) {
+  chat.resolveApproval(
+    approved,
+    props.model || undefined,
+    props.executionMode || undefined,
+    props.provider || undefined,
+  );
+}
+
+function setPendingApproval(pending: PendingToolCall[] | null) {
+  chat.setPendingApproval(pending);
+}
+
 function setMessages(msgs: UIMessage[]) {
   chat.setMessages(msgs);
 }
@@ -76,6 +89,7 @@ defineExpose({
   conversationId: chat.conversationId,
   setMessages,
   setConversationId,
+  setPendingApproval,
   clearChat,
   focusInput,
   isLoading: chat.isLoading,
@@ -90,7 +104,10 @@ defineExpose({
       :is-streaming="chat.isStreaming.value"
       :streaming-text="chat.streamingText.value"
       :live-tool-calls="chat.liveToolCalls.value"
+      :pending-approval="chat.pendingApproval.value"
       @suggest="handleSend"
+      @approve="handleApproval(true)"
+      @reject="handleApproval(false)"
     />
     <ChatInput
       ref="chatInput"

@@ -77,9 +77,10 @@ async function selectConversation(id: number) {
   showDropdown.value = false;
   if (id === activeConversationId.value) return;
   try {
-    const msgs = await loadConversation(id);
+    const { messages: msgs, pendingToolCalls } = await loadConversation(id);
     chatPanel.value?.setMessages(msgs);
     chatPanel.value?.setConversationId(id);
+    chatPanel.value?.setPendingApproval(pendingToolCalls);
   } catch (err) {
     console.error('Failed to load conversation:', err);
   }
