@@ -17,6 +17,7 @@ use samuelreichor\coPilot\helpers\SchemaValidator;
 use samuelreichor\coPilot\models\Message;
 use samuelreichor\coPilot\models\Settings;
 use samuelreichor\coPilot\models\StreamChunk;
+use samuelreichor\coPilot\providers\ProviderInterface;
 use samuelreichor\coPilot\tools\CreateCategoryTool;
 use samuelreichor\coPilot\tools\CreateEntryTool;
 use samuelreichor\coPilot\tools\DescribeCategoryGroupTool;
@@ -69,10 +70,75 @@ class AgentService extends Component
         ?string $executionMode = null,
         ?string $providerHandle = null,
     ): array {
+        return $this->runAgentLoop(
+            $userMessage,
+            $contextEntryId,
+            $conversationHistory,
+            $model,
+            null,
+            $attachments,
+            $siteHandle,
+            $executionMode,
+            $providerHandle,
+        );
+    }
+
+    /**
+     * @param Message[] $conversationHistory
+     * @param callable(string, array<string, mixed>): void $emit Emits SSE events
+     * @param array<int, array<string, mixed>> $attachments
+     * @return array{text: string|null, toolCalls: array<int, array<string, mixed>>|null, newMessages: array<int, array<string, mixed>>, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
+     */
+    public function handleMessageStream(
+        string $userMessage,
+        ?int $contextEntryId,
+        array $conversationHistory,
+        ?string $model,
+        callable $emit,
+        array $attachments = [],
+        ?string $siteHandle = null,
+        ?string $executionMode = null,
+        ?string $providerHandle = null,
+    ): array {
+        return $this->runAgentLoop(
+            $userMessage,
+            $contextEntryId,
+            $conversationHistory,
+            $model,
+            $emit,
+            $attachments,
+            $siteHandle,
+            $executionMode,
+            $providerHandle,
+        );
+    }
+
+    /**
+     * The agent loop shared by the streaming and non-streaming entry points.
+     * When $emit is set, provider output is streamed and progress events are
+     * emitted; without it, the provider is called in blocking mode.
+     *
+     * @param Message[] $conversationHistory
+     * @param callable(string, array<string, mixed>): void|null $emit
+     * @param array<int, array<string, mixed>> $attachments
+     * @return array{text: string|null, toolCalls: array<int, array<string, mixed>>|null, newMessages: array<int, array<string, mixed>>, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
+     */
+    private function runAgentLoop(
+        string $userMessage,
+        ?int $contextEntryId,
+        array $conversationHistory,
+        ?string $model,
+        ?callable $emit,
+        array $attachments,
+        ?string $siteHandle,
+        ?string $executionMode,
+        ?string $providerHandle,
+    ): array {
         $plugin = CoPilot::getInstance();
 
-        Logger::info("handleMessage: userMessage length=" . strlen($userMessage)
-            . ", contextEntryId={$contextEntryId}, attachments=" . count($attachments));
+        Logger::info("runAgentLoop: userMessage length=" . strlen($userMessage)
+            . ", contextEntryId={$contextEntryId}, attachments=" . count($attachments)
+            . ", streaming=" . ($emit ? 'yes' : 'no'));
 
         $contextEntry = null;
         if ($contextEntryId) {
@@ -100,8 +166,19 @@ class AgentService extends Component
         /** @var array<int, array{name: string, success: bool, entryId: int|null, entryTitle: string|null, cpEditUrl: string|null}> $executedToolCalls */
         $executedToolCalls = [];
 
-        $maxIterations = $plugin->getSettings()->maxAgentIterations;
+        $maxIterations = $settings->maxAgentIterations;
         $timeLimit = (int) ini_get('max_execution_time');
+
+        $finalize = function(?string $text) use (&$messages, &$executedToolCalls, &$totalInputTokens, &$totalOutputTokens, &$iteration, $systemPrompt, $model, $settings, $historyCount): array {
+            return [
+                'text' => $text,
+                'toolCalls' => $executedToolCalls !== [] ? $executedToolCalls : null,
+                'newMessages' => array_slice($messages, $historyCount),
+                'inputTokens' => $totalInputTokens,
+                'outputTokens' => $totalOutputTokens,
+                'debug' => $this->buildDebugPayload($systemPrompt, $model, $settings, $messages, $iteration, $historyCount),
+            ];
+        };
 
         // Agent loop: call provider, execute tools, repeat until text response or max iterations
         while ($iteration < $maxIterations) {
@@ -114,32 +191,40 @@ class AgentService extends Component
 
             Logger::info("Agent loop iteration {$iteration}/{$maxIterations}, sending " . count($messages) . ' messages to provider');
 
-            $response = $provider->chat($systemPrompt, $messages, $toolDefs, $model);
-            $totalInputTokens += $response->inputTokens;
-            $totalOutputTokens += $response->outputTokens;
+            $response = $this->runProviderIteration(
+                $provider,
+                $systemPrompt,
+                $messages,
+                $toolDefs,
+                $model,
+                $emit,
+                $totalInputTokens,
+                $totalOutputTokens,
+            );
 
-            if ($response->type === 'error') {
-                $errorText = 'Error: ' . $response->error;
+            if ($response['error'] !== null) {
+                $errorText = 'Error: ' . $response['error'];
                 $messages[] = [
                     'role' => MessageRole::Assistant->value,
                     'content' => $errorText,
                 ];
 
-                return [
-                    'text' => $errorText,
-                    'toolCalls' => $executedToolCalls !== [] ? $executedToolCalls : null,
-                    'newMessages' => array_slice($messages, $historyCount),
-                    'inputTokens' => $totalInputTokens,
-                    'outputTokens' => $totalOutputTokens,
-                    'debug' => $this->buildDebugPayload($systemPrompt, $model, $settings, $messages, $iteration, $historyCount),
-                ];
+                return $finalize($errorText);
             }
 
-            if ($response->type === 'text') {
-                $text = $response->text;
-                if (($text === null || $text === '') && $executedToolCalls !== []) {
-                    Logger::warning("handleMessage: provider returned empty text after tool calls, generating summary fallback");
+            if ($response['toolCalls'] === []) {
+                $text = $response['text'];
+
+                if ($text === '' && $executedToolCalls !== []) {
+                    Logger::warning("runAgentLoop: provider returned empty text after tool calls, generating summary fallback");
                     $text = $this->buildToolCallSummary($executedToolCalls);
+                    $this->emitTo($emit, 'text_delta', ['delta' => $text]);
+                }
+
+                if ($text === '') {
+                    Logger::warning("runAgentLoop produced empty response after {$iteration} iterations, {$totalInputTokens} input / {$totalOutputTokens} output tokens");
+                    $text = 'The AI model returned an empty response. This can happen with certain models — please try again or switch to a different model.';
+                    $this->emitTo($emit, 'text_delta', ['delta' => $text]);
                 }
 
                 $messages[] = [
@@ -147,210 +232,22 @@ class AgentService extends Component
                     'content' => $text,
                 ];
 
-                Logger::info("handleMessage complete: {$iteration} iterations, {$totalInputTokens} input / {$totalOutputTokens} output tokens");
+                Logger::info("runAgentLoop complete: {$iteration} iterations, {$totalInputTokens} input / {$totalOutputTokens} output tokens");
 
-                return [
-                    'text' => $text,
-                    'toolCalls' => $executedToolCalls !== [] ? $executedToolCalls : null,
-                    'newMessages' => array_slice($messages, $historyCount),
-                    'inputTokens' => $totalInputTokens,
-                    'outputTokens' => $totalOutputTokens,
-                    'debug' => $this->buildDebugPayload($systemPrompt, $model, $settings, $messages, $iteration, $historyCount),
-                ];
+                return $finalize($text);
             }
 
-            if ($response->type === 'tool_call' && $response->toolCalls) {
-                $messages[] = [
-                    'role' => MessageRole::Assistant->value,
-                    'content' => $response->text,
-                    'toolCalls' => $response->toolCalls,
-                    'rawModelParts' => $response->rawModelParts,
-                ];
-
-                foreach ($response->toolCalls as $toolCall) {
-                    $result = $this->executeTool($toolCall['name'], $toolCall['arguments']);
-
-                    $executedToolCalls[] = [
-                        'name' => $toolCall['name'],
-                        'success' => !isset($result['error']),
-                        'entryId' => $result['entryId'] ?? null,
-                        'entryTitle' => $result['entryTitle'] ?? null,
-                        'cpEditUrl' => $result['cpEditUrl'] ?? null,
-                    ];
-
-                    $messages[] = [
-                        'role' => MessageRole::Tool->value,
-                        'content' => $result,
-                        'toolCallId' => $toolCall['id'],
-                        'toolName' => $toolCall['name'],
-                        'isError' => isset($result['error']),
-                    ];
-                }
-            }
-        }
-
-        $maxIterText = 'The AI reached the maximum number of tool call iterations. Please try a simpler request.';
-        $messages[] = [
-            'role' => MessageRole::Assistant->value,
-            'content' => $maxIterText,
-        ];
-
-        return [
-            'text' => $maxIterText,
-            'toolCalls' => $executedToolCalls !== [] ? $executedToolCalls : null,
-            'newMessages' => array_slice($messages, $historyCount),
-            'inputTokens' => $totalInputTokens,
-            'outputTokens' => $totalOutputTokens,
-            'debug' => $this->buildDebugPayload($systemPrompt, $model, $settings, $messages, $iteration, $historyCount),
-        ];
-    }
-
-    /**
-     * @param Message[] $conversationHistory
-     * @param callable(string, array<string, mixed>): void $emit Emits SSE events
-     * @param array<int, array<string, mixed>> $attachments
-     * @return array{text: string|null, newMessages: array<int, array<string, mixed>>, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
-     */
-    public function handleMessageStream(
-        string $userMessage,
-        ?int $contextEntryId,
-        array $conversationHistory,
-        ?string $model,
-        callable $emit,
-        array $attachments = [],
-        ?string $siteHandle = null,
-        ?string $executionMode = null,
-        ?string $providerHandle = null,
-    ): array {
-        $plugin = CoPilot::getInstance();
-
-        Logger::info("handleMessageStream: userMessage length=" . strlen($userMessage)
-            . ", contextEntryId={$contextEntryId}, attachments=" . count($attachments));
-
-        $contextEntry = null;
-        if ($contextEntryId) {
-            $query = Entry::find()->id($contextEntryId)->status(null)->drafts(null);
-            $query = $siteHandle ? $query->site($siteHandle) : $query->site('*');
-            $contextEntry = $query->one();
-        }
-
-        $site = $this->resolveSite($siteHandle, $contextEntry);
-        $this->activeSiteHandle = $site?->handle;
-        $systemPrompt = $plugin->systemPromptBuilder->build($contextEntry, $site, $executionMode);
-
-        $userMessage = $this->enrichMessageWithAttachments($userMessage, $attachments);
-        $historyCount = count($conversationHistory);
-        $messages = $this->buildMessagesArray($conversationHistory, $userMessage);
-        $toolDefs = $this->getToolDefinitions();
-        $settings = $plugin->getSettings();
-        $provider = $plugin->providerService->getActiveProvider($providerHandle);
-
-        $totalInputTokens = 0;
-        $totalOutputTokens = 0;
-        $fullText = '';
-        $iteration = 0;
-        $hasFallenBack = false;
-        $hadStreamError = false;
-        $maxIterations = $settings->maxAgentIterations;
-        $timeLimit = (int) ini_get('max_execution_time');
-
-        while ($iteration < $maxIterations) {
-            $iteration++;
-
-            // Reset PHP execution time limit per iteration to prevent timeouts during long agent loops
-            if ($timeLimit > 0 && function_exists('set_time_limit')) {
-                set_time_limit($timeLimit);
-            }
-
-            Logger::info("Agent stream loop iteration {$iteration}/{$maxIterations}, sending " . count($messages) . ' messages to provider');
-
-            $iterationText = '';
-            $iterationToolCalls = [];
-            $iterationHadError = false;
-            /** @var array<int, array<string, mixed>>|null $iterationRawModelParts */
-            $iterationRawModelParts = null;
-
-            $provider->chatStream(
-                $systemPrompt,
-                $messages,
-                $toolDefs,
-                $model,
-                function(StreamChunk $chunk) use (&$iterationText, &$iterationToolCalls, &$totalInputTokens, &$totalOutputTokens, &$iterationHadError, &$iterationRawModelParts, $emit): void {
-                    switch ($chunk->type) {
-                        case 'text_delta':
-                            $iterationText .= $chunk->delta;
-                            $emit('text_delta', ['delta' => $chunk->delta]);
-                            break;
-                        case 'tool_call':
-                            $iterationToolCalls[] = [
-                                'id' => $chunk->toolCallId,
-                                'name' => $chunk->toolName,
-                                'arguments' => $chunk->toolArguments ?? [],
-                            ];
-                            break;
-                        case 'model_parts':
-                            $iterationRawModelParts = $chunk->rawModelParts;
-                            break;
-                        case 'usage':
-                            $totalInputTokens += $chunk->inputTokens;
-                            $totalOutputTokens += $chunk->outputTokens;
-                            break;
-                        case 'error':
-                            $iterationHadError = true;
-                            $emit('error', ['message' => $chunk->error]);
-                            break;
-                    }
-                },
-            );
-
-            // Stream error — stop immediately, error was already emitted to the client
-            if ($iterationHadError) {
-                $hadStreamError = true;
-                break;
-            }
-
-            // If the stream returned nothing, retry once with non-streaming (no alternate model — saves rate limit)
-            if ($iterationText === '' && empty($iterationToolCalls) && !$hasFallenBack) {
-                $hasFallenBack = true;
-
-                Logger::warning("Stream returned empty response on iteration {$iteration}, falling back to non-streaming");
-                $fallbackResponse = $provider->chat($systemPrompt, $messages, $toolDefs, $model);
-                $totalInputTokens += $fallbackResponse->inputTokens;
-                $totalOutputTokens += $fallbackResponse->outputTokens;
-
-                if ($fallbackResponse->type === 'error') {
-                    $emit('error', ['message' => $fallbackResponse->error]);
-                    break;
-                }
-
-                $iterationText = $fallbackResponse->text ?? '';
-                if ($iterationText !== '') {
-                    $emit('text_delta', ['delta' => $iterationText]);
-                }
-
-                if ($fallbackResponse->type === 'tool_call' && $fallbackResponse->toolCalls) {
-                    $iterationToolCalls = $fallbackResponse->toolCalls;
-                }
-            }
-
-            // No tool calls so we're done
-            if (empty($iterationToolCalls)) {
-                $fullText .= $iterationText;
-                break;
-            }
-
-            // Don't accumulate pre-tool-call narration into the final response text.
-            // The text is still preserved in the messages array for the model context.
-
+            // The model requested tool calls. Pre-tool-call narration stays in
+            // the message context but never becomes the final response text.
             $messages[] = [
                 'role' => MessageRole::Assistant->value,
-                'content' => $iterationText ?: null,
-                'toolCalls' => $iterationToolCalls,
-                'rawModelParts' => $iterationRawModelParts,
+                'content' => $response['text'] !== '' ? $response['text'] : null,
+                'toolCalls' => $response['toolCalls'],
+                'rawModelParts' => $response['rawModelParts'],
             ];
 
-            foreach ($iterationToolCalls as $toolCall) {
-                $emit('tool_start', [
+            foreach ($response['toolCalls'] as $toolCall) {
+                $this->emitTo($emit, 'tool_start', [
                     'id' => $toolCall['id'],
                     'name' => $toolCall['name'],
                 ]);
@@ -359,10 +256,18 @@ class AgentService extends Component
                 $success = !isset($result['error']);
 
                 if (!$success) {
-                    Logger::warning("Stream tool '{$toolCall['name']}' returned error: " . ($result['error'] ?? 'unknown'));
+                    Logger::warning("Tool '{$toolCall['name']}' returned error: " . ($result['error'] ?? 'unknown'));
                 }
 
-                $emit('tool_end', [
+                $executedToolCalls[] = [
+                    'name' => $toolCall['name'],
+                    'success' => $success,
+                    'entryId' => $result['entryId'] ?? null,
+                    'entryTitle' => $result['entryTitle'] ?? null,
+                    'cpEditUrl' => $result['cpEditUrl'] ?? null,
+                ];
+
+                $this->emitTo($emit, 'tool_end', [
                     'id' => $toolCall['id'],
                     'name' => $toolCall['name'],
                     'success' => $success,
@@ -381,32 +286,131 @@ class AgentService extends Component
             }
         }
 
-        if ($fullText === '' && !$hadStreamError) {
-            Logger::warning("handleMessageStream produced empty response after {$iteration} iterations, {$totalInputTokens} input / {$totalOutputTokens} output tokens");
+        $maxIterText = 'The AI reached the maximum number of tool call iterations. Please try a simpler request.';
+        $this->emitTo($emit, 'text_delta', ['delta' => $maxIterText]);
+        $messages[] = [
+            'role' => MessageRole::Assistant->value,
+            'content' => $maxIterText,
+        ];
 
-            // Provide a clear user-facing message instead of silence
-            $fallbackMsg = 'The AI model returned an empty response. This can happen with certain models — please try again or switch to a different model.';
-            $emit('text_delta', ['delta' => $fallbackMsg]);
-            $fullText = $fallbackMsg;
-        } else {
-            Logger::info("handleMessageStream complete: {$iteration} iterations, {$totalInputTokens} input / {$totalOutputTokens} output tokens");
-        }
+        return $finalize($maxIterText);
+    }
 
-        $finalText = $fullText ?: null;
-        if ($finalText !== null) {
-            $messages[] = [
-                'role' => MessageRole::Assistant->value,
-                'content' => $finalText,
+    /**
+     * Runs one provider round-trip and normalizes the result. With an emitter,
+     * the provider is streamed (text deltas are emitted as they arrive) and an
+     * empty stream is retried once in blocking mode; without one, the provider
+     * is called in blocking mode directly.
+     *
+     * @param array<int, array<string, mixed>> $messages
+     * @param array<int, array<string, mixed>> $toolDefs
+     * @param callable(string, array<string, mixed>): void|null $emit
+     * @return array{text: string, toolCalls: array<int, array{id: string|null, name: string, arguments: array<string, mixed>}>, rawModelParts: array<int, array<string, mixed>>|null, error: string|null}
+     */
+    private function runProviderIteration(
+        ProviderInterface $provider,
+        string $systemPrompt,
+        array $messages,
+        array $toolDefs,
+        ?string $model,
+        ?callable $emit,
+        int &$totalInputTokens,
+        int &$totalOutputTokens,
+    ): array {
+        if ($emit === null) {
+            $response = $provider->chat($systemPrompt, $messages, $toolDefs, $model);
+            $totalInputTokens += $response->inputTokens;
+            $totalOutputTokens += $response->outputTokens;
+
+            return [
+                'text' => $response->text ?? '',
+                'toolCalls' => $response->type === 'tool_call' ? ($response->toolCalls ?? []) : [],
+                'rawModelParts' => $response->rawModelParts,
+                'error' => $response->type === 'error' ? ($response->error ?? 'Unknown provider error') : null,
             ];
         }
 
+        $text = '';
+        $toolCalls = [];
+        $error = null;
+        /** @var array<int, array<string, mixed>>|null $rawModelParts */
+        $rawModelParts = null;
+
+        $provider->chatStream(
+            $systemPrompt,
+            $messages,
+            $toolDefs,
+            $model,
+            function(StreamChunk $chunk) use (&$text, &$toolCalls, &$totalInputTokens, &$totalOutputTokens, &$error, &$rawModelParts, $emit): void {
+                switch ($chunk->type) {
+                    case 'text_delta':
+                        $text .= $chunk->delta;
+                        $emit('text_delta', ['delta' => $chunk->delta]);
+                        break;
+                    case 'tool_call':
+                        $toolCalls[] = [
+                            'id' => $chunk->toolCallId,
+                            'name' => $chunk->toolName,
+                            'arguments' => $chunk->toolArguments ?? [],
+                        ];
+                        break;
+                    case 'model_parts':
+                        $rawModelParts = $chunk->rawModelParts;
+                        break;
+                    case 'usage':
+                        $totalInputTokens += $chunk->inputTokens;
+                        $totalOutputTokens += $chunk->outputTokens;
+                        break;
+                    case 'error':
+                        $error = $chunk->error ?? 'Unknown stream error';
+                        $emit('error', ['message' => $error]);
+                        break;
+                }
+            },
+        );
+
+        // If the stream returned nothing, retry once in blocking mode
+        // (same model — an alternate model would burn a second rate limit)
+        if ($error === null && $text === '' && $toolCalls === []) {
+            Logger::warning("Stream returned empty response, falling back to non-streaming");
+            $fallbackResponse = $provider->chat($systemPrompt, $messages, $toolDefs, $model);
+            $totalInputTokens += $fallbackResponse->inputTokens;
+            $totalOutputTokens += $fallbackResponse->outputTokens;
+
+            if ($fallbackResponse->type === 'error') {
+                $error = $fallbackResponse->error ?? 'Unknown provider error';
+                $emit('error', ['message' => $error]);
+            } else {
+                $text = $fallbackResponse->text ?? '';
+                if ($text !== '') {
+                    $emit('text_delta', ['delta' => $text]);
+                }
+
+                if ($fallbackResponse->type === 'tool_call' && $fallbackResponse->toolCalls) {
+                    $toolCalls = $fallbackResponse->toolCalls;
+                }
+
+                $rawModelParts = $fallbackResponse->rawModelParts;
+            }
+        }
+
         return [
-            'text' => $finalText,
-            'newMessages' => array_slice($messages, $historyCount),
-            'inputTokens' => $totalInputTokens,
-            'outputTokens' => $totalOutputTokens,
-            'debug' => $this->buildDebugPayload($systemPrompt, $model, $settings, $messages, $iteration, $historyCount),
+            'text' => $text,
+            'toolCalls' => $toolCalls,
+            'rawModelParts' => $rawModelParts,
+            'error' => $error,
         ];
+    }
+
+    /**
+     * @param callable(string, array<string, mixed>): void|null $emit
+     * @param array<string, mixed> $data
+     */
+    private function emitTo(?callable $emit, string $event, array $data): void
+    {
+        if ($emit !== null) {
+            $emit($event, $data);
+        }
     }
 
     /**
