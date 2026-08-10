@@ -481,8 +481,12 @@ class AgentService extends Component
             return ['error' => "Unknown tool: {$toolName}"];
         }
 
-        // Inject active site handle so tools can scope queries to the current site
-        if ($this->activeSiteHandle !== null && !isset($arguments['_siteHandle'])) {
+        // _siteHandle is a harness-owned parameter: always drop whatever the
+        // model sent so it cannot redirect a tool to a different site, then
+        // inject the active site so tools can scope queries to it. Tools expose
+        // an explicit siteHandle parameter for model-controlled site targeting.
+        unset($arguments['_siteHandle']);
+        if ($this->activeSiteHandle !== null) {
             $arguments['_siteHandle'] = $this->activeSiteHandle;
         }
 
