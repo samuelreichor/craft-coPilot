@@ -45,6 +45,20 @@
     }) }}
 
     {{ forms.textField({
+        label: 'Max Tool Result Tokens',
+        instructions: 'Token budget for a single tool result. Oversized results are truncated before they are sent back to the AI.',
+        id: 'maxToolResultTokens',
+        name: 'maxToolResultTokens',
+        value: settings.maxToolResultTokens,
+        type: 'number',
+        min: 500,
+        max: 100000,
+        disabled: config.maxToolResultTokens is defined,
+        warning: config.maxToolResultTokens is defined ? configWarning('maxToolResultTokens'),
+        errors: settings.getErrors('maxToolResultTokens'),
+    }) }}
+
+    {{ forms.textField({
         label: 'Max Context Tokens',
         instructions: 'Maximum token budget for entry context sent to the AI.',
         id: 'maxContextTokens',

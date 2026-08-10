@@ -299,7 +299,7 @@ class AgentService extends Component
 
                 $messages[] = [
                     'role' => MessageRole::Tool->value,
-                    'content' => $result,
+                    'content' => TokenEstimator::truncateToolResult($result, $settings->maxToolResultTokens),
                     'toolCallId' => $toolCall['id'],
                     'toolName' => $toolCall['name'],
                     'isError' => !$success,
