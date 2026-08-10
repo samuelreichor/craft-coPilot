@@ -3,6 +3,7 @@ import { apiPost } from './useCraftApi';
 import type {
   ConversationSummary,
   ConversationDetail,
+  PendingToolCall,
   UIMessage,
 } from '../types';
 import { parseAttachmentsFromContent } from '../utils/attachments';
@@ -18,14 +19,16 @@ export function useConversations(
   const conversations = ref<ConversationSummary[]>(initialConversations);
   const activeConversationId = ref<number | null>(null);
 
-  async function loadConversation(id: number): Promise<UIMessage[]> {
+  async function loadConversation(
+    id: number,
+  ): Promise<{ messages: UIMessage[]; pendingToolCalls: PendingToolCall[] | null }> {
     const data = await apiPost<ConversationDetail>(
       'co-pilot/chat/load-conversation',
       { id },
     );
     activeConversationId.value = data.id;
 
-    return (data.messages || [])
+    const messages = (data.messages || [])
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .map((m) => {
         const raw =
@@ -49,6 +52,11 @@ export function useConversations(
           outputTokens: 0,
         };
       });
+
+    return {
+      messages,
+      pendingToolCalls: data.pendingToolCalls ?? null,
+    };
   }
 
   async function deleteConversation(id: number): Promise<void> {

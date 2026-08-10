@@ -53,9 +53,10 @@ function updateUrl(conversationId: number | null) {
 async function selectConversation(id: number) {
   if (id === activeConversationId.value) return;
   try {
-    const msgs = await loadConversation(id);
+    const { messages: msgs, pendingToolCalls } = await loadConversation(id);
     chatPanel.value?.setMessages(msgs);
     chatPanel.value?.setConversationId(id);
+    chatPanel.value?.setPendingApproval(pendingToolCalls);
     updateUrl(id);
   } catch (err) {
     console.error('Failed to load conversation:', err);

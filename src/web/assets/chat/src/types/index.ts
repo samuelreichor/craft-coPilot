@@ -50,6 +50,7 @@ export type StreamEventType =
   | 'text_delta'
   | 'tool_start'
   | 'tool_end'
+  | 'approval_required'
   | 'error'
   | 'done';
 
@@ -62,6 +63,15 @@ export interface StreamDoneData {
   conversationId: number | null;
   inputTokens: number;
   outputTokens: number;
+  pendingApproval?: boolean;
+}
+
+/** A write tool call awaiting the user's approval */
+export interface PendingToolCall {
+  id: string | null;
+  name: string;
+  label: string;
+  arguments: Record<string, unknown>;
 }
 
 export interface ToolStartData {
@@ -91,6 +101,7 @@ export interface LiveToolCall {
 export interface SendResponse {
   text: string | null;
   toolCalls?: ToolCall[] | null;
+  pendingToolCalls?: PendingToolCall[] | null;
   inputTokens: number;
   outputTokens: number;
   conversationId: number | null;
@@ -134,4 +145,5 @@ export interface ConversationDetail {
     toolName?: string | null;
     toolCalls?: ToolCall[] | null;
   }>;
+  pendingToolCalls?: PendingToolCall[] | null;
 }

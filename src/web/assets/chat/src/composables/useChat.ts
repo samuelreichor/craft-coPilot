@@ -6,6 +6,7 @@ import type {
   Attachment,
   AttachmentPayload,
   LiveToolCall,
+  PendingToolCall,
   ToolCall,
   StreamDoneData,
   ToolStartData,
@@ -38,6 +39,9 @@ export function useChat(options: UseChatOptions) {
   const liveToolCalls = ref<LiveToolCall[]>([]);
   const isStreaming = ref(false);
 
+  // Write tool calls waiting for the user's approve/reject decision
+  const pendingApproval = ref<PendingToolCall[] | null>(null);
+
   let abortConnection: (() => void) | null = null;
 
   const { connect } = useSSE();
@@ -55,6 +59,10 @@ export function useChat(options: UseChatOptions) {
 
   function setConversationId(id: number | null) {
     conversationId.value = id;
+  }
+
+  function setPendingApproval(pending: PendingToolCall[] | null) {
+    pendingApproval.value = pending && pending.length > 0 ? pending : null;
   }
 
   function addAttachment(att: Attachment) {
@@ -75,6 +83,10 @@ export function useChat(options: UseChatOptions) {
 
   async function sendMessage(text: string, model?: string, executionMode?: string, provider?: string) {
     if (isLoading.value) return;
+
+    // Sending a new message implicitly declines any pending write approval
+    // (the backend records the rejection).
+    pendingApproval.value = null;
 
     // Build full message with attachment prefix
     let fullMessage = text;
@@ -120,6 +132,50 @@ export function useChat(options: UseChatOptions) {
     sendStreaming(fullMessage, sendContextId, model ?? options.model, attachmentPayloads, executionMode, provider);
   }
 
+  function handleStreamEvent(event: { type: string; data: Record<string, unknown> }) {
+    switch (event.type) {
+      case 'text_delta':
+        streamingText.value += (event.data.delta as string) || '';
+        break;
+      case 'tool_start': {
+        const ts = event.data as unknown as ToolStartData;
+        // Clear any pre-tool-call narration text so it doesn't
+        // appear in the final message
+        streamingText.value = '';
+        liveToolCalls.value.push({
+          id: ts.id,
+          name: ts.name,
+          status: 'running',
+        });
+        break;
+      }
+      case 'tool_end': {
+        const te = event.data as unknown as ToolEndData;
+        const tc = liveToolCalls.value.find((t) => t.id === te.id);
+        if (tc) {
+          tc.status = te.success ? 'success' : 'error';
+          tc.entryId = te.entryId;
+          tc.entryTitle = te.entryTitle;
+          tc.cpEditUrl = te.cpEditUrl;
+        }
+        break;
+      }
+      case 'approval_required':
+        pendingApproval.value =
+          (event.data.toolCalls as PendingToolCall[]) || [];
+        break;
+      case 'error':
+        streamingText.value +=
+          '\n\nError: ' + ((event.data.message as string) || 'Unknown error');
+        break;
+      case 'done': {
+        const done = event.data as unknown as StreamDoneData;
+        finalizeStream(done);
+        break;
+      }
+    }
+  }
+
   function sendStreaming(
     message: string,
     sendContextId: number | null | undefined,
@@ -146,45 +202,7 @@ export function useChat(options: UseChatOptions) {
         provider: provider || undefined,
       },
       {
-        onEvent(event) {
-          switch (event.type) {
-            case 'text_delta':
-              streamingText.value += (event.data.delta as string) || '';
-              break;
-            case 'tool_start': {
-              const ts = event.data as unknown as ToolStartData;
-              // Clear any pre-tool-call narration text so it doesn't
-              // appear in the final message
-              streamingText.value = '';
-              liveToolCalls.value.push({
-                id: ts.id,
-                name: ts.name,
-                status: 'running',
-              });
-              break;
-            }
-            case 'tool_end': {
-              const te = event.data as unknown as ToolEndData;
-              const tc = liveToolCalls.value.find((t) => t.id === te.id);
-              if (tc) {
-                tc.status = te.success ? 'success' : 'error';
-                tc.entryId = te.entryId;
-                tc.entryTitle = te.entryTitle;
-                tc.cpEditUrl = te.cpEditUrl;
-              }
-              break;
-            }
-            case 'error':
-              streamingText.value +=
-                '\n\nError: ' + ((event.data.message as string) || 'Unknown error');
-              break;
-            case 'done': {
-              const done = event.data as unknown as StreamDoneData;
-              finalizeStream(done);
-              break;
-            }
-          }
-        },
+        onEvent: handleStreamEvent,
         onError(error) {
           // Streaming not available — fall back to legacy
           isStreaming.value = false;
@@ -205,8 +223,55 @@ export function useChat(options: UseChatOptions) {
     abortConnection = connection.abort;
   }
 
+  /**
+   * Resolves a pending write approval: executes the gated tool calls
+   * (approved) or records a rejection, then streams the continuation.
+   */
+  function resolveApproval(
+    approved: boolean,
+    model?: string,
+    executionMode?: string,
+    provider?: string,
+  ) {
+    if (!conversationId.value || !pendingApproval.value) return;
+
+    pendingApproval.value = null;
+    isLoading.value = true;
+    isStreaming.value = true;
+    streamingText.value = '';
+    liveToolCalls.value = [];
+
+    const connection = connect(
+      'co-pilot/chat/resolve-approval-stream',
+      {
+        conversationId: conversationId.value,
+        approved,
+        contextId: contextId.value,
+        siteHandle: options.siteHandle || undefined,
+        model: model || undefined,
+        executionMode: executionMode || undefined,
+        provider: provider || undefined,
+      },
+      {
+        onEvent: handleStreamEvent,
+        onError(error) {
+          streamingText.value +=
+            '\n\nError: ' + (error.message || 'Unknown error');
+          finalizeStream();
+        },
+        onComplete() {
+          if (isStreaming.value) {
+            finalizeStream();
+          }
+        },
+      },
+    );
+
+    abortConnection = connection.abort;
+  }
+
   function finalizeStream(done?: StreamDoneData) {
-    const text = streamingText.value || 'No response received.';
+    const awaitingApproval = done?.pendingApproval === true;
     const toolCalls: ToolCall[] | null =
       liveToolCalls.value.length > 0
         ? liveToolCalls.value.map((tc) => ({
@@ -218,13 +283,19 @@ export function useChat(options: UseChatOptions) {
           }))
         : null;
 
-    messages.value.push({
-      role: 'assistant',
-      content: text,
-      toolCalls,
-      inputTokens: done?.inputTokens ?? 0,
-      outputTokens: done?.outputTokens ?? 0,
-    });
+    // While waiting for approval there is no final response yet — keep any
+    // narration visible as a message but skip the "No response" placeholder.
+    if (!awaitingApproval || streamingText.value !== '' || toolCalls) {
+      messages.value.push({
+        role: 'assistant',
+        content:
+          streamingText.value ||
+          (awaitingApproval ? '' : 'No response received.'),
+        toolCalls,
+        inputTokens: done?.inputTokens ?? 0,
+        outputTokens: done?.outputTokens ?? 0,
+      });
+    }
 
     if (done?.conversationId) {
       conversationId.value = done.conversationId;
@@ -260,13 +331,21 @@ export function useChat(options: UseChatOptions) {
         provider: provider || undefined,
       });
 
-      messages.value.push({
-        role: 'assistant',
-        content: data.text || 'No response received.',
-        toolCalls: data.toolCalls || null,
-        inputTokens: data.inputTokens || 0,
-        outputTokens: data.outputTokens || 0,
-      });
+      const awaitingApproval = !!data.pendingToolCalls?.length;
+
+      if (data.text || !awaitingApproval) {
+        messages.value.push({
+          role: 'assistant',
+          content: data.text || 'No response received.',
+          toolCalls: data.toolCalls || null,
+          inputTokens: data.inputTokens || 0,
+          outputTokens: data.outputTokens || 0,
+        });
+      }
+
+      if (awaitingApproval) {
+        pendingApproval.value = data.pendingToolCalls || null;
+      }
 
       if (data.conversationId) {
         conversationId.value = data.conversationId;
@@ -298,6 +377,7 @@ export function useChat(options: UseChatOptions) {
     attachments.value = [];
     streamingText.value = '';
     liveToolCalls.value = [];
+    pendingApproval.value = null;
     isStreaming.value = false;
     isLoading.value = false;
   }
@@ -311,12 +391,15 @@ export function useChat(options: UseChatOptions) {
     isStreaming,
     streamingText,
     liveToolCalls,
+    pendingApproval,
     hasStreamingContent,
     setMessages,
     setConversationId,
+    setPendingApproval,
     addAttachment,
     removeAttachment,
     sendMessage,
+    resolveApproval,
     cancel,
     clearChat,
   };

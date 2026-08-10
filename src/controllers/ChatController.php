@@ -149,6 +149,7 @@ class ChatController extends Controller
             'title' => $conversation->title,
             'contextId' => $conversation->contextId,
             'messages' => $this->buildUiMessages($conversation->messages),
+            'pendingToolCalls' => $this->getPendingUiToolCalls($conversation),
         ]);
     }
 
@@ -329,7 +330,28 @@ class ChatController extends Controller
         return $this->asJson([
             'id' => $conversation->id,
             'messages' => $this->buildUiMessages($conversation->messages),
+            'pendingToolCalls' => $this->getPendingUiToolCalls($conversation),
         ]);
+    }
+
+    /**
+     * Returns the approval payload when the conversation ends with unexecuted
+     * tool calls, so the UI can re-show the approval prompt after a reload.
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function getPendingUiToolCalls(Conversation $conversation): ?array
+    {
+        $messages = $conversation->messages;
+        $lastMessage = end($messages);
+
+        if (!$lastMessage instanceof Message
+            || $lastMessage->role !== MessageRole::Assistant
+            || empty($lastMessage->toolCalls)) {
+            return null;
+        }
+
+        return CoPilot::getInstance()->agentService->describeToolCallsForApproval($lastMessage->toolCalls);
     }
 
     /**
@@ -417,18 +439,7 @@ class ChatController extends Controller
         $this->requirePostRequest();
         $this->requirePermission(Constants::PERMISSION_CREATE_CHAT);
 
-        // Ensure the script completes even if the client disconnects mid-stream,
-        // so that persistConversation() is always reached.
-        ignore_user_abort(true);
-
-        header('Content-Type: text/event-stream');
-        header('Cache-Control: no-cache');
-        header('Connection: keep-alive');
-        header('X-Accel-Buffering: no');
-
-        while (ob_get_level() > 0) {
-            ob_end_flush();
-        }
+        $this->beginSSE();
 
         $plugin = CoPilot::getInstance();
 
@@ -514,6 +525,7 @@ class ChatController extends Controller
             'conversationId' => $conversationId,
             'inputTokens' => $result['inputTokens'],
             'outputTokens' => $result['outputTokens'],
+            'pendingApproval' => $result['pendingToolCalls'] !== null,
         ]);
 
         // Generate a proper title after the stream is done (client won't notice the delay)
@@ -522,6 +534,103 @@ class ChatController extends Controller
         }
 
         $this->endSSE();
+    }
+
+    /**
+     * POST /actions/co-pilot/chat/resolve-approval-stream
+     *
+     * Executes or rejects the approval-gated tool calls at the end of a
+     * conversation, then continues the agent loop over SSE.
+     */
+    public function actionResolveApprovalStream(): void
+    {
+        $this->requirePostRequest();
+        $this->requirePermission(Constants::PERMISSION_CREATE_CHAT);
+
+        $this->beginSSE();
+
+        $plugin = CoPilot::getInstance();
+
+        $rawBody = $this->request->getRawBody();
+        $body = json_decode($rawBody, true) ?? [];
+
+        $conversationId = $body['conversationId'] ?? null;
+        $approved = (bool)($body['approved'] ?? false);
+        $contextId = $body['contextId'] ?? null;
+        $siteHandle = $body['siteHandle'] ?? null;
+        [
+            'model' => $model,
+            'provider' => $providerHandle,
+            'executionMode' => $executionMode,
+        ] = $this->resolveAgentOverrides(
+            $body['model'] ?? null,
+            $body['provider'] ?? null,
+            $body['executionMode'] ?? null,
+        );
+
+        if (!$conversationId) {
+            $this->sendSSE('error', ['message' => 'Conversation ID is required.']);
+            $this->endSSE();
+            return;
+        }
+
+        try {
+            $conversation = $this->getConversation((int)$conversationId, forEdit: true);
+        } catch (\Throwable $e) {
+            $this->sendSSE('error', ['message' => $e->getMessage()]);
+            $this->endSSE();
+            return;
+        }
+
+        $result = $plugin->agentService->resumePendingToolCalls(
+            $conversation->messages,
+            $approved,
+            function(string $eventType, array $data): void {
+                $this->sendSSE($eventType, $data);
+            },
+            $contextId ? (int)$contextId : null,
+            $model,
+            $siteHandle,
+            $executionMode,
+            $providerHandle,
+        );
+
+        $this->persistConversation(
+            (int)$conversationId,
+            $result['newMessages'],
+            $conversation->contextType,
+            $conversation->contextId,
+            $result['debug'],
+            $result['inputTokens'],
+            $result['outputTokens'],
+        );
+
+        $plugin->auditService->linkToConversation((int)$conversationId);
+
+        $this->sendSSE('done', [
+            'conversationId' => (int)$conversationId,
+            'inputTokens' => $result['inputTokens'],
+            'outputTokens' => $result['outputTokens'],
+            'pendingApproval' => $result['pendingToolCalls'] !== null,
+        ]);
+
+        $this->endSSE();
+    }
+
+    private function beginSSE(): void
+    {
+        // Ensure the script completes even if the client disconnects mid-stream,
+        // so that persistConversation() is always reached.
+        ignore_user_abort(true);
+
+        header('Content-Type: text/event-stream');
+        header('Cache-Control: no-cache');
+        header('Connection: keep-alive');
+        header('X-Accel-Buffering: no');
+
+        while (ob_get_level() > 0) {
+            ob_end_flush();
+        }
     }
 
     /**

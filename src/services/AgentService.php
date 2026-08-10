@@ -8,6 +8,8 @@ use craft\elements\Asset;
 use craft\elements\Entry;
 use craft\models\Site;
 use samuelreichor\coPilot\CoPilot;
+use samuelreichor\coPilot\enums\AgentExecutionMode;
+use samuelreichor\coPilot\enums\AuditAction;
 use samuelreichor\coPilot\enums\MessageRole;
 use samuelreichor\coPilot\events\RegisterToolsEvent;
 use samuelreichor\coPilot\events\ToolCallEvent;
@@ -58,7 +60,7 @@ class AgentService extends Component
     /**
      * @param Message[] $conversationHistory
      * @param array<int, array<string, mixed>> $attachments
-     * @return array{text: string|null, toolCalls: array<int, array<string, mixed>>|null, newMessages: array<int, array<string, mixed>>, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
+     * @return array{text: string|null, toolCalls: array<int, array<string, mixed>>|null, pendingToolCalls: array<int, array<string, mixed>>|null, newMessages: array<int, array<string, mixed>>, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
      */
     public function handleMessage(
         string $userMessage,
@@ -87,7 +89,7 @@ class AgentService extends Component
      * @param Message[] $conversationHistory
      * @param callable(string, array<string, mixed>): void $emit Emits SSE events
      * @param array<int, array<string, mixed>> $attachments
-     * @return array{text: string|null, toolCalls: array<int, array<string, mixed>>|null, newMessages: array<int, array<string, mixed>>, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
+     * @return array{text: string|null, toolCalls: array<int, array<string, mixed>>|null, pendingToolCalls: array<int, array<string, mixed>>|null, newMessages: array<int, array<string, mixed>>, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
      */
     public function handleMessageStream(
         string $userMessage,
@@ -114,17 +116,77 @@ class AgentService extends Component
     }
 
     /**
+     * Continues a conversation whose last message is an assistant message with
+     * unexecuted (approval-gated) tool calls. When $approved, the pending calls
+     * are executed; otherwise rejection results are recorded. Either way the
+     * loop then continues so the model can react to the outcome.
+     *
+     * @param Message[] $conversationHistory
+     * @param callable(string, array<string, mixed>): void|null $emit
+     * @return array{text: string|null, toolCalls: array<int, array<string, mixed>>|null, pendingToolCalls: array<int, array<string, mixed>>|null, newMessages: array<int, array<string, mixed>>, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
+     */
+    public function resumePendingToolCalls(
+        array $conversationHistory,
+        bool $approved,
+        ?callable $emit = null,
+        ?int $contextEntryId = null,
+        ?string $model = null,
+        ?string $siteHandle = null,
+        ?string $executionMode = null,
+        ?string $providerHandle = null,
+    ): array {
+        return $this->runAgentLoop(
+            null,
+            $contextEntryId,
+            $conversationHistory,
+            $model,
+            $emit,
+            [],
+            $siteHandle,
+            $executionMode,
+            $providerHandle,
+            $approved,
+        );
+    }
+
+    /**
+     * Maps raw tool calls to the payload shown in the approval UI.
+     *
+     * @param array<int, array<string, mixed>> $toolCalls
+     * @return array<int, array{id: string|null, name: string, label: string, arguments: array<string, mixed>}>
+     */
+    public function describeToolCallsForApproval(array $toolCalls): array
+    {
+        $tools = $this->getTools();
+
+        return array_values(array_map(function(array $toolCall) use ($tools): array {
+            $arguments = is_array($toolCall['arguments'] ?? null) ? $toolCall['arguments'] : [];
+            unset($arguments['_siteHandle']);
+
+            return [
+                'id' => $toolCall['id'] ?? null,
+                'name' => $toolCall['name'],
+                'label' => isset($tools[$toolCall['name']]) ? $tools[$toolCall['name']]->getLabel() : $toolCall['name'],
+                'arguments' => $arguments,
+            ];
+        }, $toolCalls));
+    }
+
+    /**
      * The agent loop shared by the streaming and non-streaming entry points.
      * When $emit is set, provider output is streamed and progress events are
      * emitted; without it, the provider is called in blocking mode.
      *
+     * $userMessage is null when resuming after an approval decision; in that
+     * case $resolvePendingApproval carries the decision.
+     *
      * @param Message[] $conversationHistory
      * @param callable(string, array<string, mixed>): void|null $emit
      * @param array<int, array<string, mixed>> $attachments
-     * @return array{text: string|null, toolCalls: array<int, array<string, mixed>>|null, newMessages: array<int, array<string, mixed>>, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
+     * @return array{text: string|null, toolCalls: array<int, array<string, mixed>>|null, pendingToolCalls: array<int, array<string, mixed>>|null, newMessages: array<int, array<string, mixed>>, inputTokens: int, outputTokens: int, debug: array<string, mixed>}
      */
     private function runAgentLoop(
-        string $userMessage,
+        ?string $userMessage,
         ?int $contextEntryId,
         array $conversationHistory,
         ?string $model,
@@ -133,12 +195,14 @@ class AgentService extends Component
         ?string $siteHandle,
         ?string $executionMode,
         ?string $providerHandle,
+        ?bool $resolvePendingApproval = null,
     ): array {
         $plugin = CoPilot::getInstance();
 
-        Logger::info("runAgentLoop: userMessage length=" . strlen($userMessage)
+        Logger::info("runAgentLoop: userMessage length=" . strlen($userMessage ?? '')
             . ", contextEntryId={$contextEntryId}, attachments=" . count($attachments)
-            . ", streaming=" . ($emit ? 'yes' : 'no'));
+            . ", streaming=" . ($emit ? 'yes' : 'no')
+            . ", resolveApproval=" . ($resolvePendingApproval === null ? 'none' : ($resolvePendingApproval ? 'approved' : 'rejected')));
 
         $contextEntry = null;
         if ($contextEntryId) {
@@ -151,14 +215,18 @@ class AgentService extends Component
         $this->activeSiteHandle = $site?->handle;
         $systemPrompt = $plugin->systemPromptBuilder->build($contextEntry, $site, $executionMode);
 
-        $userMessage = $this->enrichMessageWithAttachments($userMessage, $attachments);
-
-        // historyCount marks the boundary between old and new messages
-        $historyCount = count($conversationHistory);
-        $messages = $this->buildMessagesArray($conversationHistory, $userMessage);
         $toolDefs = $this->getToolDefinitions();
         $settings = $plugin->getSettings();
         $provider = $plugin->providerService->getActiveProvider($providerHandle);
+        $supervised = (AgentExecutionMode::tryFrom($executionMode ?? $settings->agentExecutionMode)
+            ?? AgentExecutionMode::Supervised) === AgentExecutionMode::Supervised;
+
+        // historyCount marks the boundary between old and new messages
+        $historyCount = count($conversationHistory);
+        $messages = [];
+        foreach ($conversationHistory as $historyMessage) {
+            $messages[] = $historyMessage->toArray();
+        }
 
         $totalInputTokens = 0;
         $totalOutputTokens = 0;
@@ -166,15 +234,47 @@ class AgentService extends Component
         /** @var array<int, array{name: string, success: bool, entryId: int|null, entryTitle: string|null, cpEditUrl: string|null}> $executedToolCalls */
         $executedToolCalls = [];
 
+        // Resolve approval-gated tool calls left at the end of the history
+        // before anything else, so the message sequence stays valid for the
+        // provider (an assistant tool call must be followed by tool results).
+        $pendingToolCalls = $this->extractPendingToolCalls($messages);
+        if ($pendingToolCalls !== []) {
+            if ($resolvePendingApproval === true) {
+                $this->executeToolCallBatch($pendingToolCalls, $messages, $executedToolCalls, $emit, $settings);
+            } elseif ($resolvePendingApproval === false) {
+                $this->appendRejectedToolResults(
+                    $pendingToolCalls,
+                    $messages,
+                    'The user rejected this action. Do not retry it unchanged — ask the user what should be different.',
+                );
+            } else {
+                // The user sent a new message instead of deciding — treat the
+                // pending calls as declined so the conversation stays usable.
+                $this->appendRejectedToolResults(
+                    $pendingToolCalls,
+                    $messages,
+                    'The user did not approve this action and sent a new message instead. Treat it as declined.',
+                );
+            }
+        }
+
+        if ($userMessage !== null) {
+            $messages[] = [
+                'role' => MessageRole::User->value,
+                'content' => $this->enrichMessageWithAttachments($userMessage, $attachments),
+            ];
+        }
+
         $maxIterations = $settings->maxAgentIterations;
         $timeLimit = (int) ini_get('max_execution_time');
         $startedAt = microtime(true);
         $stopText = null;
 
-        $finalize = function(?string $text) use (&$messages, &$executedToolCalls, &$totalInputTokens, &$totalOutputTokens, &$iteration, $systemPrompt, $model, $provider, $providerHandle, $settings, $historyCount): array {
+        $finalize = function(?string $text, ?array $awaitingApproval = null) use (&$messages, &$executedToolCalls, &$totalInputTokens, &$totalOutputTokens, &$iteration, $systemPrompt, $model, $provider, $providerHandle, $settings, $historyCount): array {
             return [
                 'text' => $text,
                 'toolCalls' => $executedToolCalls !== [] ? $executedToolCalls : null,
+                'pendingToolCalls' => $awaitingApproval,
                 'newMessages' => array_slice($messages, $historyCount),
                 'inputTokens' => $totalInputTokens,
                 'outputTokens' => $totalOutputTokens,
@@ -267,44 +367,18 @@ class AgentService extends Component
                 'rawModelParts' => $response['rawModelParts'],
             ];
 
-            foreach ($response['toolCalls'] as $toolCall) {
-                $this->emitTo($emit, 'tool_start', [
-                    'id' => $toolCall['id'],
-                    'name' => $toolCall['name'],
-                ]);
+            // Supervised mode: write tools require the user's approval. Stop
+            // the loop with the calls unexecuted; a resume request with the
+            // decision picks the conversation back up.
+            if ($supervised && $this->containsWriteToolCall($response['toolCalls'])) {
+                $awaitingApproval = $this->describeToolCallsForApproval($response['toolCalls']);
+                Logger::info('Agent loop paused for write approval: ' . implode(', ', array_column($awaitingApproval, 'name')));
+                $this->emitTo($emit, 'approval_required', ['toolCalls' => $awaitingApproval]);
 
-                $result = $this->executeTool($toolCall['name'], $toolCall['arguments']);
-                $success = !isset($result['error']);
-
-                if (!$success) {
-                    Logger::warning("Tool '{$toolCall['name']}' returned error: " . ($result['error'] ?? 'unknown'));
-                }
-
-                $executedToolCalls[] = [
-                    'name' => $toolCall['name'],
-                    'success' => $success,
-                    'entryId' => $result['entryId'] ?? null,
-                    'entryTitle' => $result['entryTitle'] ?? null,
-                    'cpEditUrl' => $result['cpEditUrl'] ?? null,
-                ];
-
-                $this->emitTo($emit, 'tool_end', [
-                    'id' => $toolCall['id'],
-                    'name' => $toolCall['name'],
-                    'success' => $success,
-                    'entryId' => $result['entryId'] ?? null,
-                    'entryTitle' => $result['entryTitle'] ?? null,
-                    'cpEditUrl' => $result['cpEditUrl'] ?? null,
-                ]);
-
-                $messages[] = [
-                    'role' => MessageRole::Tool->value,
-                    'content' => TokenEstimator::truncateToolResult($result, $settings->maxToolResultTokens),
-                    'toolCallId' => $toolCall['id'],
-                    'toolName' => $toolCall['name'],
-                    'isError' => !$success,
-                ];
+                return $finalize(null, $awaitingApproval);
             }
+
+            $this->executeToolCallBatch($response['toolCalls'], $messages, $executedToolCalls, $emit, $settings);
         }
 
         $stopText ??= 'The AI reached the maximum number of tool call iterations. Please try a simpler request.';
@@ -714,23 +788,115 @@ class AgentService extends Component
     }
 
     /**
-     * @param Message[] $history
+     * Returns the tool calls of the last message when it is an assistant
+     * message with unexecuted tool calls (i.e. paused for approval).
+     *
+     * @param array<int, array<string, mixed>> $messages
      * @return array<int, array<string, mixed>>
      */
-    private function buildMessagesArray(array $history, string $userMessage): array
+    private function extractPendingToolCalls(array $messages): array
     {
-        $messages = [];
-
-        foreach ($history as $msg) {
-            $messages[] = $msg->toArray();
+        $lastMessage = end($messages);
+        if (!is_array($lastMessage)) {
+            return [];
         }
 
-        $messages[] = [
-            'role' => MessageRole::User->value,
-            'content' => $userMessage,
-        ];
+        if (($lastMessage['role'] ?? null) !== MessageRole::Assistant->value) {
+            return [];
+        }
 
-        return $messages;
+        $toolCalls = $lastMessage['toolCalls'] ?? null;
+
+        return is_array($toolCalls) ? $toolCalls : [];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $toolCalls
+     */
+    private function containsWriteToolCall(array $toolCalls): bool
+    {
+        $tools = $this->getTools();
+
+        foreach ($toolCalls as $toolCall) {
+            $tool = $tools[$toolCall['name']] ?? null;
+            if ($tool !== null && in_array($tool->getAction(), [AuditAction::Create, AuditAction::Update], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Executes a batch of tool calls: emits progress events, records executed
+     * metadata, and appends the (truncated) results to the message context.
+     *
+     * @param array<int, array<string, mixed>> $toolCalls
+     * @param array<int, array<string, mixed>> $messages
+     * @param array<int, array{name: string, success: bool, entryId: int|null, entryTitle: string|null, cpEditUrl: string|null}> $executedToolCalls
+     * @param callable(string, array<string, mixed>): void|null $emit
+     */
+    private function executeToolCallBatch(array $toolCalls, array &$messages, array &$executedToolCalls, ?callable $emit, Settings $settings): void
+    {
+        foreach ($toolCalls as $toolCall) {
+            $this->emitTo($emit, 'tool_start', [
+                'id' => $toolCall['id'] ?? null,
+                'name' => $toolCall['name'],
+            ]);
+
+            $arguments = is_array($toolCall['arguments'] ?? null) ? $toolCall['arguments'] : [];
+            $result = $this->executeTool($toolCall['name'], $arguments);
+            $success = !isset($result['error']);
+
+            if (!$success) {
+                Logger::warning("Tool '{$toolCall['name']}' returned error: " . ($result['error'] ?? 'unknown'));
+            }
+
+            $executedToolCalls[] = [
+                'name' => $toolCall['name'],
+                'success' => $success,
+                'entryId' => $result['entryId'] ?? null,
+                'entryTitle' => $result['entryTitle'] ?? null,
+                'cpEditUrl' => $result['cpEditUrl'] ?? null,
+            ];
+
+            $this->emitTo($emit, 'tool_end', [
+                'id' => $toolCall['id'] ?? null,
+                'name' => $toolCall['name'],
+                'success' => $success,
+                'entryId' => $result['entryId'] ?? null,
+                'entryTitle' => $result['entryTitle'] ?? null,
+                'cpEditUrl' => $result['cpEditUrl'] ?? null,
+            ]);
+
+            $messages[] = [
+                'role' => MessageRole::Tool->value,
+                'content' => TokenEstimator::truncateToolResult($result, $settings->maxToolResultTokens),
+                'toolCallId' => $toolCall['id'] ?? null,
+                'toolName' => $toolCall['name'],
+                'isError' => !$success,
+            ];
+        }
+    }
+
+    /**
+     * Records rejection results for unexecuted tool calls so the provider
+     * message sequence stays valid and the model knows what happened.
+     *
+     * @param array<int, array<string, mixed>> $toolCalls
+     * @param array<int, array<string, mixed>> $messages
+     */
+    private function appendRejectedToolResults(array $toolCalls, array &$messages, string $reason): void
+    {
+        foreach ($toolCalls as $toolCall) {
+            $messages[] = [
+                'role' => MessageRole::Tool->value,
+                'content' => ['error' => $reason],
+                'toolCallId' => $toolCall['id'] ?? null,
+                'toolName' => $toolCall['name'],
+                'isError' => true,
+            ];
+        }
     }
 
     /**
