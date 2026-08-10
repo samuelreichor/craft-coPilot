@@ -169,14 +169,14 @@ class AgentService extends Component
         $maxIterations = $settings->maxAgentIterations;
         $timeLimit = (int) ini_get('max_execution_time');
 
-        $finalize = function(?string $text) use (&$messages, &$executedToolCalls, &$totalInputTokens, &$totalOutputTokens, &$iteration, $systemPrompt, $model, $settings, $historyCount): array {
+        $finalize = function(?string $text) use (&$messages, &$executedToolCalls, &$totalInputTokens, &$totalOutputTokens, &$iteration, $systemPrompt, $model, $provider, $providerHandle, $settings, $historyCount): array {
             return [
                 'text' => $text,
                 'toolCalls' => $executedToolCalls !== [] ? $executedToolCalls : null,
                 'newMessages' => array_slice($messages, $historyCount),
                 'inputTokens' => $totalInputTokens,
                 'outputTokens' => $totalOutputTokens,
-                'debug' => $this->buildDebugPayload($systemPrompt, $model, $settings, $messages, $iteration, $historyCount),
+                'debug' => $this->buildDebugPayload($systemPrompt, $model, $provider, $providerHandle, $settings, $messages, $iteration, $historyCount),
             ];
         };
 
@@ -572,17 +572,17 @@ class AgentService extends Component
     private function buildDebugPayload(
         string $systemPrompt,
         ?string $model,
+        ProviderInterface $provider,
+        ?string $providerHandle,
         Settings $settings,
         array $messages,
         int $iterations,
         int $historyCount,
     ): array {
-        $provider = CoPilot::getInstance()->providerService->getActiveProvider();
-
         return [
             'systemPrompt' => $systemPrompt,
             'model' => $model ?? $provider->getModel(),
-            'provider' => $settings->defaultProvider,
+            'provider' => $providerHandle ?? $settings->defaultProvider,
             'messages' => array_values(array_slice($messages, $historyCount)),
             'iterations' => $iterations,
         ];
