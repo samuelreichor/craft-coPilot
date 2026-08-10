@@ -91,6 +91,12 @@ class Settings extends Model
      * 0 disables the check.
      */
     public int $maxTokensPerRequest = 0;
+
+    /**
+     * Token budget for a single tool result before it enters the message
+     * context. Oversized results are truncated with a note to the model.
+     */
+    public int $maxToolResultTokens = 8000;
     public int $defaultSerializationDepth = 3;
     public int $maxSerializationDepth = 4;
     public int $maxContextTokens = 200000;
@@ -115,6 +121,7 @@ class Settings extends Model
             ['maxAgentIterations', 'integer', 'min' => 1, 'max' => 200],
             ['maxAgentSeconds', 'integer', 'min' => 30, 'max' => 3600],
             ['maxTokensPerRequest', 'integer', 'min' => 0],
+            ['maxToolResultTokens', 'integer', 'min' => 500, 'max' => 100000],
             ['defaultSerializationDepth', 'integer', 'min' => 1, 'max' => 10],
             ['maxSerializationDepth', 'integer', 'min' => 1, 'max' => 10],
             ['maxContextTokens', 'integer', 'min' => 1000, 'max' => 1000000],

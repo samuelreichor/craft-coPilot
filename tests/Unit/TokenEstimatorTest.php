@@ -99,4 +99,38 @@ class TokenEstimatorTest extends TestCase
         // Non-matrix arrays should not be truncated
         $this->assertCount(7, $result['fields']['tags']);
     }
+
+    public function testTruncateToolResultReturnsSmallResultsUnchanged(): void
+    {
+        $result = ['entryId' => 1, 'title' => 'Test'];
+
+        $this->assertSame($result, TokenEstimator::truncateToolResult($result, 8000));
+    }
+
+    public function testTruncateToolResultWrapsOversizedResults(): void
+    {
+        $result = ['data' => str_repeat('a', 20000)];
+
+        $truncated = TokenEstimator::truncateToolResult($result, 1000);
+
+        $this->assertTrue($truncated['truncated']);
+        $this->assertArrayHasKey('note', $truncated);
+        $this->assertLessThanOrEqual(1000, TokenEstimator::estimate($truncated));
+        $this->assertStringStartsWith('{"data":"aaa', $truncated['partialResult']);
+    }
+
+    public function testTruncateToolResultPrefersMatrixTrimming(): void
+    {
+        $blocks = [];
+        for ($i = 0; $i < 50; $i++) {
+            $blocks[] = ['_blockType' => 'text', 'body' => str_repeat('b', 100)];
+        }
+        $result = ['fields' => ['matrix' => $blocks]];
+
+        $truncated = TokenEstimator::truncateToolResult($result, 500);
+
+        // Matrix trimming keeps the result structured instead of wrapping it
+        $this->assertArrayNotHasKey('truncated', $truncated);
+        $this->assertCount(6, $truncated['fields']['matrix']);
+    }
 }

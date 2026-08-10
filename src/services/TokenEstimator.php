@@ -20,6 +20,37 @@ class TokenEstimator
     }
 
     /**
+     * Enforces a token budget on a tool result before it enters the message
+     * context. Tries Matrix-block trimming first; if the result is still over
+     * budget, it is replaced by a wrapper containing a truncated JSON snippet
+     * and a note telling the model how to get the full data.
+     *
+     * @param array<string, mixed> $result
+     * @return array<string, mixed>
+     */
+    public static function truncateToolResult(array $result, int $maxTokens): array
+    {
+        if (self::estimate($result) <= $maxTokens) {
+            return $result;
+        }
+
+        $result = self::trim($result, $maxTokens);
+        if (self::estimate($result) <= $maxTokens) {
+            return $result;
+        }
+
+        $json = json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $keepChars = max(500, $maxTokens * 4 - 300);
+
+        return [
+            'truncated' => true,
+            'note' => 'The tool result exceeded the context budget and was cut off. '
+                . 'Narrow the request (fewer results, specific fields, summary detail) to get complete data.',
+            'partialResult' => mb_substr((string)$json, 0, $keepChars),
+        ];
+    }
+
+    /**
      * Trims Matrix block arrays to 5 blocks when over budget.
      *
      * @param array<string, mixed> $data
