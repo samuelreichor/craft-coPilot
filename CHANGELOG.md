@@ -1,5 +1,20 @@
 # Release Notes for coPilot
 
+## Unreleased
+
+### Security
+- Enforce the changeExecutionMode, changeProvider and changeModel permissions server-side instead of only hiding the UI controls
+- Require the editOtherUsersChats permission to append to or compact another user's conversation
+- Gate write tools behind an in-code approval flow in supervised mode: the agent pauses, shows the exact changes, and only executes after the user approves
+- Validate tool arguments against their JSON schema before execution
+- The harness now owns the internal `_siteHandle` argument so the model can no longer redirect tool calls to a different site
+
+### Changed
+- Unify the streaming and non-streaming agent loops (empty-stream retries now work on every iteration, stream errors are persisted)
+- Add a wall-clock budget (`maxAgentSeconds`) and an optional token budget (`maxTokensPerRequest`) per request
+- Truncate oversized tool results before they enter the model context (`maxToolResultTokens`)
+- Debug exports now record the provider that was actually used for a turn
+
 ## 1.0.5 - 2026-07-13
 
 - Add support for Opus 4.8, Sonnet 5 and Fable 5 to Anthropic provider.
