@@ -13,6 +13,7 @@ use samuelreichor\coPilot\events\RegisterToolsEvent;
 use samuelreichor\coPilot\events\ToolCallEvent;
 use samuelreichor\coPilot\helpers\Logger;
 use samuelreichor\coPilot\helpers\PluginHelper;
+use samuelreichor\coPilot\helpers\SchemaValidator;
 use samuelreichor\coPilot\models\Message;
 use samuelreichor\coPilot\models\Settings;
 use samuelreichor\coPilot\models\StreamChunk;
@@ -486,6 +487,18 @@ class AgentService extends Component
         // inject the active site so tools can scope queries to it. Tools expose
         // an explicit siteHandle parameter for model-controlled site targeting.
         unset($arguments['_siteHandle']);
+
+        $validation = SchemaValidator::validate($arguments, $tools[$toolName]->getParameters());
+        if (!$validation['valid']) {
+            Logger::warning("Tool '{$toolName}' called with invalid arguments: " . implode(' ', $validation['errors']));
+
+            return [
+                'error' => 'Invalid tool arguments: ' . implode(' ', $validation['errors']),
+                'retryHint' => 'Fix the listed arguments and call the tool again with a complete, valid argument set.',
+            ];
+        }
+        $arguments = $validation['arguments'];
+
         if ($this->activeSiteHandle !== null) {
             $arguments['_siteHandle'] = $this->activeSiteHandle;
         }
