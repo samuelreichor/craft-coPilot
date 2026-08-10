@@ -18,6 +18,33 @@
     }) }}
 
     {{ forms.textField({
+        label: 'Max Agent Seconds',
+        instructions: 'Wall-clock time budget per request in seconds. The agent stops gracefully once the budget is used up.',
+        id: 'maxAgentSeconds',
+        name: 'maxAgentSeconds',
+        value: settings.maxAgentSeconds,
+        type: 'number',
+        min: 30,
+        max: 3600,
+        disabled: config.maxAgentSeconds is defined,
+        warning: config.maxAgentSeconds is defined ? configWarning('maxAgentSeconds'),
+        errors: settings.getErrors('maxAgentSeconds'),
+    }) }}
+
+    {{ forms.textField({
+        label: 'Max Tokens Per Request',
+        instructions: 'Total token budget (input + output) per request. Set to 0 to disable the check.',
+        id: 'maxTokensPerRequest',
+        name: 'maxTokensPerRequest',
+        value: settings.maxTokensPerRequest,
+        type: 'number',
+        min: 0,
+        disabled: config.maxTokensPerRequest is defined,
+        warning: config.maxTokensPerRequest is defined ? configWarning('maxTokensPerRequest'),
+        errors: settings.getErrors('maxTokensPerRequest'),
+    }) }}
+
+    {{ forms.textField({
         label: 'Max Context Tokens',
         instructions: 'Maximum token budget for entry context sent to the AI.',
         id: 'maxContextTokens',
