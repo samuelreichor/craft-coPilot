@@ -85,17 +85,16 @@ class MessageTest extends TestCase
     public function testFromArrayThrowsOnMissingRole(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Message data must contain role and content.');
+        $this->expectExceptionMessage('Message data must contain a role.');
 
         Message::fromArray(['content' => 'no role']);
     }
 
-    public function testFromArrayThrowsOnMissingContent(): void
+    public function testFromArrayAllowsMissingContent(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Message data must contain role and content.');
+        $message = Message::fromArray(['role' => 'user']);
 
-        Message::fromArray(['role' => 'user']);
+        $this->assertNull($message->content);
     }
 
     public function testFromArrayThrowsOnInvalidRole(): void
