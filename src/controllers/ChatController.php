@@ -7,6 +7,7 @@ use craft\helpers\Cp;
 use craft\web\Controller;
 use samuelreichor\coPilot\constants\Constants;
 use samuelreichor\coPilot\CoPilot;
+use samuelreichor\coPilot\enums\AgentExecutionMode;
 use samuelreichor\coPilot\enums\MessageRole;
 use samuelreichor\coPilot\helpers\Logger;
 use samuelreichor\coPilot\models\Conversation;
@@ -345,7 +346,6 @@ class ChatController extends Controller
         $contextId = $this->request->getBodyParam('contextId');
         $conversationId = $this->request->getBodyParam('conversationId');
         $contextType = $this->request->getBodyParam('contextType');
-        $model = $this->request->getBodyParam('model');
         $attachments = $this->request->getBodyParam('attachments') ?? [];
 
         $messages = [];
@@ -355,8 +355,15 @@ class ChatController extends Controller
         }
 
         $siteHandle = $this->request->getBodyParam('siteHandle');
-        $executionMode = $this->request->getBodyParam('executionMode');
-        $providerHandle = $this->request->getBodyParam('provider');
+        [
+            'model' => $model,
+            'provider' => $providerHandle,
+            'executionMode' => $executionMode,
+        ] = $this->resolveAgentOverrides(
+            $this->request->getBodyParam('model'),
+            $this->request->getBodyParam('provider'),
+            $this->request->getBodyParam('executionMode'),
+        );
 
         $result = $plugin
             ->agentService
@@ -388,7 +395,6 @@ class ChatController extends Controller
         $plugin->auditService->linkToConversation($conversationId);
 
         if ($isNewConversation && $conversationId) {
-            $providerHandle = $this->request->getBodyParam('provider');
             $this->generateAndUpdateTitle($conversationId, $message, $providerHandle);
         }
 
@@ -433,11 +439,17 @@ class ChatController extends Controller
         $contextId = $body['contextId'] ?? null;
         $conversationId = $body['conversationId'] ?? null;
         $contextType = $body['contextType'] ?? 'global';
-        $model = $body['model'] ?? null;
         $attachments = $body['attachments'] ?? [];
         $siteHandle = $body['siteHandle'] ?? null;
-        $executionMode = $body['executionMode'] ?? null;
-        $providerHandle = $body['provider'] ?? null;
+        [
+            'model' => $model,
+            'provider' => $providerHandle,
+            'executionMode' => $executionMode,
+        ] = $this->resolveAgentOverrides(
+            $body['model'] ?? null,
+            $body['provider'] ?? null,
+            $body['executionMode'] ?? null,
+        );
 
         if ($message === '') {
             $this->sendSSE('error', ['message' => 'Message is required.']);
@@ -521,6 +533,40 @@ class ChatController extends Controller
             // Expected for SSE — headers were already sent via header()
             exit;
         }
+    }
+
+    /**
+     * Resolves the per-request agent overrides (model, provider, execution mode).
+     * Overrides the current user is not permitted to change are dropped so the
+     * configured defaults apply, regardless of what the client sent.
+     *
+     * @return array{model: string|null, provider: string|null, executionMode: string|null}
+     */
+    private function resolveAgentOverrides(mixed $model, mixed $provider, mixed $executionMode): array
+    {
+        $user = Craft::$app->getUser();
+
+        if (!$user->checkPermission(Constants::PERMISSION_CHANGE_MODEL)) {
+            $model = null;
+        }
+
+        if (!$user->checkPermission(Constants::PERMISSION_CHANGE_PROVIDER)) {
+            $provider = null;
+        }
+
+        if (!$user->checkPermission(Constants::PERMISSION_CHANGE_EXECUTION_MODE)) {
+            $executionMode = null;
+        }
+
+        if (!is_string($executionMode) || AgentExecutionMode::tryFrom($executionMode) === null) {
+            $executionMode = null;
+        }
+
+        return [
+            'model' => is_string($model) && $model !== '' ? $model : null,
+            'provider' => is_string($provider) && $provider !== '' ? $provider : null,
+            'executionMode' => $executionMode,
+        ];
     }
 
     /**
